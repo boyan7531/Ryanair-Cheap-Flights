@@ -11,7 +11,7 @@ import logging # For scheduler logging
 from flask import Flask, render_template, request, flash, jsonify, redirect, url_for # Added redirect, url_for
 from flask_mail import Mail, Message # Added Mail, Message
 from apscheduler.schedulers.background import BackgroundScheduler
-
+# Test comment
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default-fallback-secret-key') # Use env var for secret key
 
