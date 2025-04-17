@@ -1,55 +1,81 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configure Email Notifications</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <nav>
-        <ul>
-            <li><a href="{{ url_for('index') }}">Single Round Trip</a></li>
-            <li><a href="{{ url_for('multi_round_trip_form') }}">Multi-City Round Trip</a></li>
-            <li><a href="{{ url_for('sofia_deals') }}">Sofia Deals</a></li>
-            <li><a href="{{ url_for('configure_notifications') }}" class="active">Notification Settings</a></li>
-        </ul>
-    </nav>
+{% extends "base.html" %}
+{% block title %}Configure Notifications - Ryanair Deals{% endblock %}
 
-    <h1>Configure Background Email Notifications</h1>
-    <p>Set the parameters for the automatic background check (runs every 10 minutes). Emails will be sent to the address configured in your <code>.env</code> file (<code>MAIL_RECIPIENT</code>) if deals under €25 are found for these settings.</p>
+{% block content %}
+<h1>Configure Background Email Notifications</h1>
+<p class="lead">Set the parameters for the automatic background check (currently runs every 2 minutes).</p>
+<p>Emails will be sent to <code>{{ mail_recipient or '[Not Set]' }}</code> if SOF-BCN deals under €{{ notification_threshold }} are found for these settings.</p>
 
-    <!-- Display flashed messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <ul class=flashes>
-        {% for category, message in messages %}
-          <li class="{{ category }}">{{ message }}</li>
-        {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+{# Flashed messages handled in base.html #}
 
-    <form method="POST" action="{{ url_for('configure_notifications') }}">
-        <label for="outbound_month">Month to Check:</label>
-        <input type="month" id="outbound_month" name="outbound_month" required value="{{ current_settings.outbound_month }}">
+<form method="POST" action="{{ url_for('configure_notifications') }}" class="needs-validation mt-4" novalidate>
+    <div class="row g-3">
+        <div class="col-md-4 mb-3">
+            <label for="outbound_month" class="form-label">Month to Check:</label>
+            <input type="month" class="form-control" id="outbound_month" name="outbound_month" required value="{{ current_settings.outbound_month }}">
+             <div class="invalid-feedback">
+                Please select a month.
+            </div>
+       </div>
 
-        <label for="duration_from">Min Duration (days):</label>
-        <input type="number" id="duration_from" name="duration_from" min="1" value="{{ current_settings.duration_from }}" required>
+        <div class="col-md-4 mb-3">
+            <label for="duration_from" class="form-label">Min Duration (days):</label>
+            <input type="number" class="form-control" id="duration_from" name="duration_from" min="1" value="{{ current_settings.duration_from }}" required>
+             <div class="invalid-feedback">
+                Please enter a minimum duration.
+            </div>
+       </div>
 
-        <label for="duration_to">Max Duration (days):</label>
-        <input type="number" id="duration_to" name="duration_to" min="1" value="{{ current_settings.duration_to }}" required>
-
-        <button type="submit">Save Notification Settings</button>
-    </form>
-
-    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ccc;">
-        <p><strong>Current Settings Used by Background Checker:</strong></p>
-        <p>
-            Month: <code>{{ current_settings.outbound_month }}</code><br>
-            Duration: <code>{{ current_settings.duration_from }}</code> - <code>{{ current_settings.duration_to }}</code> days
-        </p>
+        <div class="col-md-4 mb-3">
+            <label for="duration_to" class="form-label">Max Duration (days):</label>
+            <input type="number" class="form-control" id="duration_to" name="duration_to" min="1" value="{{ current_settings.duration_to }}" required>
+            <div class="invalid-feedback">
+                Please enter a maximum duration.
+            </div>
+        </div>
     </div>
 
-</body>
-</html> 
+    <button type="submit" class="btn btn-primary mt-3">Save Notification Settings</button>
+</form>
+
+{# Display current settings separately #}
+<div class="mt-5 p-3 border rounded bg-light">
+    <h5 class="mb-3">Current Settings Used by Background Checker:</h5>
+    <p class="mb-1">
+        <strong>Month:</strong> <code>{{ current_settings.outbound_month }}</code>
+    </p>
+     <p class="mb-0">
+        <strong>Duration:</strong> <code>{{ current_settings.duration_from }}</code> - <code>{{ current_settings.duration_to }}</code> days
+    </p>
+</div>
+
+<div class="mt-4 text-center">
+    <a href="{{ url_for('test_email') }}" class="btn btn-outline-secondary btn-sm">Send Test Email</a>
+</div>
+
+{% endblock %}
+
+{# Add Bootstrap form validation script #}
+{% block scripts_extra %}
+<script>
+// Example starter JavaScript for disabling form submissions if there are invalid fields
+(() => {
+  'use strict'
+
+  // Fetch all the forms we want to apply custom Bootstrap validation styles to
+  const forms = document.querySelectorAll('.needs-validation')
+
+  // Loop over them and prevent submission
+  Array.from(forms).forEach(form => {
+    form.addEventListener('submit', event => {
+      if (!form.checkValidity()) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+
+      form.classList.add('was-validated')
+    }, false)
+  })
+})()
+</script>
+{% endblock %} 

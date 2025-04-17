@@ -86,7 +86,8 @@ def get_last_day_of_month(year, month):
 def index():
     today = date.today()
     default_month = (today.replace(day=1) + timedelta(days=32)).strftime('%Y-%m')
-    return render_template('index.html', default_month=default_month)
+    # Pass 'now' to the template for the footer
+    return render_template('index.html', default_month=default_month, now=datetime.utcnow())
 
 @app.route('/search', methods=['POST'])
 def search_flights():
@@ -102,14 +103,15 @@ def search_flights():
     iata_pattern = re.compile(r"^[A-Za-z]{3}$") # Simple 3-letter validation
     if not (origin_iata and destination_iata and outbound_month_str):
         flash("Please fill in Origin IATA, Destination IATA, and Outbound Month.")
-        # Pass back entered values
+        # Pass back entered values and 'now'
         return render_template('index.html', default_month=outbound_month_str or date.today().strftime('%Y-%m'),
-                               origin_iata=origin_iata, destination_iata=destination_iata)
+                               origin_iata=origin_iata, destination_iata=destination_iata, now=datetime.utcnow())
 
     if not iata_pattern.match(origin_iata) or not iata_pattern.match(destination_iata):
          flash("Origin and Destination must be 3-letter IATA codes.")
+         # Pass back entered values and 'now'
          return render_template('index.html', default_month=outbound_month_str,
-                                origin_iata=origin_iata, destination_iata=destination_iata)
+                                origin_iata=origin_iata, destination_iata=destination_iata, now=datetime.utcnow())
 
     print(f"Round Trip Search: {origin_iata} -> {destination_iata}")
 
@@ -126,8 +128,9 @@ def search_flights():
         in_date_to = date(in_year, in_month, in_last_day)
     except ValueError:
         flash("Invalid month format. Please use YYYY-MM.")
+        # Pass back entered values and 'now'
         return render_template('index.html', default_month=date.today().strftime('%Y-%m'),
-                               origin_iata=origin_iata, destination_iata=destination_iata)
+                               origin_iata=origin_iata, destination_iata=destination_iata, now=datetime.utcnow())
 
     # --- Construct API URL (using form IATA codes) ---
     api_url = ROUND_TRIP_API_TEMPLATE.format(
@@ -200,9 +203,9 @@ def search_flights():
         flash(error_message)
 
     top_10_trips = all_trips[:10]
-    # Pass IATA codes back instead of city names
+    # Pass IATA codes back instead of city names and add 'now' for base template
     return render_template('results.html', top_trips=top_10_trips, query=request.form,
-                           origin_iata=origin_iata, destination_iata=destination_iata)
+                           origin_iata=origin_iata, destination_iata=destination_iata, now=datetime.utcnow())
 
 # === Multi-City Cheapest Round Trip Search Routes ===
 
@@ -210,7 +213,7 @@ def search_flights():
 def multi_round_trip_form():
     today = date.today()
     default_month = (today.replace(day=1) + timedelta(days=32)).strftime('%Y-%m')
-    return render_template('multi_round_trip_search.html', default_month=default_month, duration_from=2, duration_to=7)
+    return render_template('multi_round_trip_search.html', default_month=default_month, duration_from=2, duration_to=7, now=datetime.utcnow())
 
 @app.route('/multi_round_trip', methods=['POST'])
 def process_multi_round_trip():
@@ -234,7 +237,8 @@ def process_multi_round_trip():
                                origin_iatas=origin_iatas_raw,
                                destination_iatas=destination_iatas_raw,
                                duration_from=duration_from or 2,
-                               duration_to=duration_to or 7)
+                               duration_to=duration_to or 7,
+                               now=datetime.utcnow())
 
     # Validate each IATA code format
     iata_pattern = re.compile(r"^[A-Za-z]{3}$")
@@ -265,7 +269,8 @@ def process_multi_round_trip():
                                 origin_iatas=origin_iatas_raw,
                                 destination_iatas=destination_iatas_raw,
                                 duration_from=duration_from or 2,
-                                duration_to=duration_to or 7)
+                                duration_to=duration_to or 7,
+                                now=datetime.utcnow())
 
     # --- Date Calculation (similar to single round trip) ---
     try:
@@ -286,7 +291,8 @@ def process_multi_round_trip():
                                 origin_iatas=origin_iatas_raw,
                                 destination_iatas=destination_iatas_raw,
                                 duration_from=duration_from or 2,
-                                duration_to=duration_to or 7)
+                                duration_to=duration_to or 7,
+                                now=datetime.utcnow())
 
     # --- Search Loop ---
     overall_cheapest_trip = {
@@ -372,14 +378,15 @@ def process_multi_round_trip():
         # Example: overall_cheapest_trip['outbound_dep_time'] = format_datetime(overall_cheapest_trip['outbound_dep_time'])
         cheapest_flight_result = overall_cheapest_trip
 
-    # Pass raw form data back for repopulation if needed
+    # Pass raw form data back for repopulation if needed and add 'now'
     return render_template('multi_round_trip_results.html',
                            cheapest_flight=cheapest_flight_result,
                            origin_iatas_raw=origin_iatas_raw,
                            destination_iatas_raw=destination_iatas_raw,
                            outbound_month=search_month_str,
                            duration_from=duration_from,
-                           duration_to=duration_to)
+                           duration_to=duration_to,
+                           now=datetime.utcnow())
 
 # === Sofia Top 10 Deals ===
 
@@ -427,13 +434,14 @@ def sofia_deals():
 
         except Exception as e:
             flash(f"Invalid date/duration parameters: {e}. Please check values.", "error")
-            # Pass back parameters used so form is repopulated
+            # Pass back parameters used so form is repopulated and 'now'
             return render_template('sofia_deals.html',
                                    top_trips=[],
                                    search_month=search_month_str,
                                    duration_from=duration_from,
                                    duration_to=duration_to,
-                                   errors=[f"Invalid date/duration parameters: {e}"])
+                                   errors=[f"Invalid date/duration parameters: {e}"],
+                                   now=datetime.utcnow())
 
         # --- Manual Search Logic --- (Moved inside the conditional block)
         cheapest_per_destination = {}
@@ -504,12 +512,13 @@ def sofia_deals():
         # Optionally add a message indicating that the user needs to submit the form
         flash("Select month and duration, then click 'Update Deals' to search.", "info")
 
-    # Pass results (possibly empty) and form values to template
+    # Pass results (possibly empty), form values and 'now' to template
     return render_template('sofia_deals.html',
                            top_trips=cheapest_trips_list,
                            search_month=search_month_str,
                            duration_from=duration_from,
-                           duration_to=duration_to)
+                           duration_to=duration_to,
+                           now=datetime.utcnow())
 
 # === Notification Configuration Route ===
 @app.route('/configure_notifications', methods=['GET', 'POST'])
@@ -543,19 +552,29 @@ def configure_notifications():
                 flash("Notification settings saved successfully! The background checker will use these parameters.", "success")
             else:
                 flash("Error saving notification settings. Please check server logs.", "error")
-            return redirect(url_for('configure_notifications')) # Redirect to refresh page
+            return redirect(url_for('configure_notifications')) # Redirect doesn't need context
         else:
-            # If validation fails, reload form with submitted values
+            # If validation fails, reload form with submitted values and 'now'
             current_settings = {
                  'outbound_month': search_month_str,
                  'duration_from': duration_from,
                  'duration_to': duration_to
             }
-            return render_template('configure_notifications.html', current_settings=current_settings)
+            # Pass 'now', current settings, recipient, and threshold
+            return render_template('configure_notifications.html', 
+                                   current_settings=current_settings, 
+                                   mail_recipient=MAIL_RECIPIENT, 
+                                   notification_threshold=NOTIFICATION_THRESHOLD, 
+                                   now=datetime.utcnow())
 
-    # GET request: Load current settings and display the form
+    # GET request: Load current settings and display the form, pass 'now'
     current_settings = load_notification_settings()
-    return render_template('configure_notifications.html', current_settings=current_settings)
+    # Pass 'now', current settings, recipient, and threshold
+    return render_template('configure_notifications.html', 
+                           current_settings=current_settings, 
+                           mail_recipient=MAIL_RECIPIENT, 
+                           notification_threshold=NOTIFICATION_THRESHOLD, 
+                           now=datetime.utcnow())
 
 # === Test Email Route ===
 @app.route('/test_email')

@@ -1,55 +1,77 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ryanair Flight Search</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <!-- Removed jQuery and jQuery UI imports -->
-</head>
-<body>
-    <nav>
-        <ul>
-            <li><a href="{{ url_for('index') }}" class="active">Single Round Trip</a></li>
-            <li><a href="{{ url_for('multi_round_trip_form') }}">Multi-City Round Trip</a></li>
-            <li><a href="{{ url_for('sofia_deals') }}">Sofia Deals</a></li>
-            <li><a href="{{ url_for('configure_notifications') }}">Notification Settings</a></li>
-        </ul>
-    </nav>
+{% extends "base.html" %}
+{% block title %}Single Flight Search - Ryanair Deals{% endblock %}
 
-    <h1>Search Ryanair Round Trip Flights</h1>
+{% block content %}
+<h1>Search Ryanair Round Trip Flights</h1>
 
-    <!-- Display flashed messages -->
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <ul class=flashes>
-        {% for message in messages %}
-          <li>{{ message }}</li>
-        {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+{# Flashed messages are handled in base.html #}
 
-    <form action="{{ url_for('search_flights') }}" method="post">
-        <label for="origin_iata">Origin Airport IATA:</label>
-        <input type="text" id="origin_iata" name="origin_iata" required pattern="[A-Za-z]{3}" title="Enter 3-letter IATA code (e.g., DUB)" placeholder="e.g., DUB" value="{{ origin_iata or '' }}">
+<form action="{{ url_for('search_flights') }}" method="post" class="needs-validation" novalidate>
+    <div class="row g-3">
+        <div class="col-md-6 mb-3">
+            <label for="origin_iata" class="form-label">Origin Airport IATA:</label>
+            <input type="text" class="form-control" id="origin_iata" name="origin_iata" required pattern="[A-Za-z]{3}" title="Enter 3-letter IATA code (e.g., SOF)" placeholder="e.g., SOF" value="{{ origin_iata or '' }}">
+            <div class="invalid-feedback">
+                Please provide a valid 3-letter origin IATA code.
+            </div>
+        </div>
 
-        <label for="destination_iata">Destination Airport IATA:</label>
-        <input type="text" id="destination_iata" name="destination_iata" required pattern="[A-Za-z]{3}" title="Enter 3-letter IATA code (e.g., STN)" placeholder="e.g., STN" value="{{ destination_iata or '' }}">
+        <div class="col-md-6 mb-3">
+            <label for="destination_iata" class="form-label">Destination Airport IATA:</label>
+            <input type="text" class="form-control" id="destination_iata" name="destination_iata" required pattern="[A-Za-z]{3}" title="Enter 3-letter IATA code (e.g., BCN)" placeholder="e.g., BCN" value="{{ destination_iata or '' }}">
+            <div class="invalid-feedback">
+                Please provide a valid 3-letter destination IATA code.
+            </div>
+        </div>
+    </div>
 
-        <label for="outbound_month">Outbound Month:</label>
-        <input type="month" id="outbound_month" name="outbound_month" required value="{{ request.form.outbound_month or default_month }}">
+    <div class="row g-3">
+        <div class="col-md-4 mb-3">
+            <label for="outbound_month" class="form-label">Outbound Month:</label>
+            <input type="month" class="form-control" id="outbound_month" name="outbound_month" required value="{{ request.form.outbound_month or default_month }}">
+             <div class="invalid-feedback">
+                Please select an outbound month.
+            </div>
+       </div>
 
-        <label for="duration_from">Min Duration (days):</label>
-        <input type="number" id="duration_from" name="duration_from" min="1" value="{{ request.form.duration_from or 2 }}">
+        <div class="col-md-4 mb-3">
+            <label for="duration_from" class="form-label">Min Duration (days):</label>
+            <input type="number" class="form-control" id="duration_from" name="duration_from" min="1" value="{{ request.form.duration_from or 2 }}">
+        </div>
 
-        <label for="duration_to">Max Duration (days):</label>
-        <input type="number" id="duration_to" name="duration_to" min="1" value="{{ request.form.duration_to or 7 }}">
+        <div class="col-md-4 mb-3">
+            <label for="duration_to" class="form-label">Max Duration (days):</label>
+            <input type="number" class="form-control" id="duration_to" name="duration_to" min="1" value="{{ request.form.duration_to or 7 }}">
+        </div>
+    </div>
 
-        <button type="submit">Search Flights</button>
-    </form>
+    <button type="submit" class="btn btn-primary">Search Flights</button>
+</form>
 
-    <!-- Removed JavaScript for autocomplete -->
+{# Removed JavaScript for autocomplete #}
+{% endblock %}
 
-</body>
-</html> 
+{# Add Bootstrap form validation script (optional) #}
+{% block scripts_extra %}
+<script>
+// Example starter JavaScript for disabling form submissions if there are invalid fields
+(() => {
+  'use strict'
+
+  // Fetch all the forms we want to apply custom Bootstrap validation styles to
+  const forms = document.querySelectorAll('.needs-validation')
+
+  // Loop over them and prevent submission
+  Array.from(forms).forEach(form => {
+    form.addEventListener('submit', event => {
+      if (!form.checkValidity()) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+
+      form.classList.add('was-validated')
+    }, false)
+  })
+})()
+</script>
+{% endblock %} 

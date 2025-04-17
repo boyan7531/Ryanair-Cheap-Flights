@@ -1,111 +1,55 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Flight Results</title>
-    <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9; }
-        h1, h2 { text-align: center; color: #073590; }
-        .result-box { border: 1px solid #ccc; padding: 20px; margin-top: 20px; border-radius: 5px; background-color: white; }
-        .flight-details { margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px dashed #eee; }
-        .flight-details:last-child { border-bottom: none; padding-bottom: 0; }
-        .flight-leg { font-weight: bold; color: #d90030; margin-bottom: 5px; }
-        .price { font-weight: bold; font-size: 1.1em; }
-        .total-price { font-weight: bold; font-size: 1.3em; color: #073590; margin-top: 15px; text-align: right; }
-        .trip-number { float: left; font-size: 1.5em; color: #ccc; font-weight: bold; margin-right: 15px; }
-        .no-results { color: #777; text-align: center; margin-top: 30px; }
-        a { color: #073590; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .back-link { display: block; text-align: center; margin-top: 30px; }
-        .flash-messages { list-style: none; padding: 0; margin: 20px 0; }
-        .flash-messages li {
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-            background-color: #f8d7da; /* Red for errors */
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        .clearfix::after { content: ""; clear: both; display: table; }
-        /* Navigation styles */
-        nav {
-            background-color: #eee;
-            padding: 10px 0;
-            margin-bottom: 20px;
-            text-align: center;
-            border-radius: 4px;
-        }
-        nav a {
-            text-decoration: none;
-            color: #073590;
-            padding: 10px 15px;
-            margin: 0 5px;
-            font-weight: bold;
-            border-radius: 4px;
-        }
-        nav a.active { background-color: #ddd; }
-        nav a:hover { background-color: #d0d0d0; }
-    </style>
-</head>
-<body>
-    <nav>
-        {# Note: No 'active' class here as this is a results page #}
-        <a href="/">Single Round Trip Search</a>
-        <a href="/multi_search">Multi-City Cheapest Search</a>
-    </nav>
+{% extends "base.html" %}
+{% block title %}Flight Results - {{ origin_iata }} to {{ destination_iata }}{% endblock %}
 
-    <h1>Search Results</h1>
+{% block content %}
+<h1>Search Results</h1>
+<h2>{{ origin_iata }} <small class="text-muted">to</small> {{ destination_iata }}</h2>
 
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <ul class=flash-messages>
-        {% for message in messages %}
-          <li>{{ message }}</li>
-        {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+{# Flashed messages handled in base.html #}
 
-    {% if top_trips %}
-        <h2>Top {{ top_trips|length }} Cheapest Round Trips Found</h2>
-        {% for trip in top_trips %}
-            <div class="result-box clearfix">
-                 <div class="trip-number">#{{ loop.index }}</div>
-                 <div>
-                    <p><strong>{{ trip.origin }} &rarr; {{ trip.destination }}</strong></p>
-
-                    <div class="flight-details">
-                        <div class="flight-leg">Outbound ({{ trip.outbound.flight_no }})</div>
-                        Departure: {{ trip.outbound.dep_time | replace('T', ' ') if trip.outbound.dep_time else 'N/A' }}<br>
-                        Arrival: {{ trip.outbound.arr_time | replace('T', ' ') if trip.outbound.arr_time else 'N/A' }}<br>
-                        Price: <span class="price">{{ trip.outbound.price }} {{ trip.currency }}</span>
-                    </div>
-
-                    <div class="flight-details">
-                        <div class="flight-leg">Inbound ({{ trip.inbound.flight_no }})</div>
-                        Departure: {{ trip.inbound.dep_time | replace('T', ' ') if trip.inbound.dep_time else 'N/A' }}<br>
-                        Arrival: {{ trip.inbound.arr_time | replace('T', ' ') if trip.inbound.arr_time else 'N/A' }}<br>
-                        Price: <span class="price">{{ trip.inbound.price }} {{ trip.currency }}</span>
-                    </div>
-
-                    <div class="total-price">
-                        Total Price: {{ trip.total_price }} {{ trip.currency }}
-                    </div>
-                 </div>
-            </div>
-        {% endfor %}
-    {% else %}
-        {# Display message only if no specific error was flashed #}
-        {% if not get_flashed_messages() %}
-            <p class="no-results">No suitable round trips found based on your search criteria.</p>
-        {% endif %}
-    {% endif %}
-
-    <div class="back-link">
-        {# Go back to the specific search form that generated these results if possible, else default #}
-        <a href="{{ request.referrer or url_for('index') }}">&larr; Back to Search</a>
+{% if top_trips %}
+    <h3 class="mt-4">Top {{ top_trips|length }} Cheapest Round Trips Found</h3>
+    <div class="table-responsive"> {# Make table scroll horizontally on small screens #}
+        <table class="table table-striped table-hover mt-3">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Outbound</th>
+                    <th scope="col">Inbound</th>
+                    <th scope="col" class="text-end">Total Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trip in top_trips %}
+                <tr>
+                    <th scope="row">{{ loop.index }}</th>
+                    <td>
+                        <strong>{{ trip.outbound.dep_time | replace('T', ' ') if trip.outbound.dep_time else 'N/A' }}</strong><br>
+                        <small class="text-muted">({{ trip.outbound.flight_no }})</small><br>
+                        <small>Price: {{ trip.outbound.price }} {{ trip.currency }}</small>
+                    </td>
+                     <td>
+                        <strong>{{ trip.inbound.dep_time | replace('T', ' ') if trip.inbound.dep_time else 'N/A' }}</strong><br>
+                        <small class="text-muted">({{ trip.inbound.flight_no }})</small><br>
+                        <small>Price: {{ trip.inbound.price }} {{ trip.currency }}</small>
+                    </td>
+                    <td class="text-end fw-bold fs-5">{{ trip.total_price }} {{ trip.currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+{% else %}
+    {# Display message only if no specific error was flashed #}
+    {% if not get_flashed_messages(with_categories=True) %}
+        <div class="alert alert-warning mt-4" role="alert">
+            No suitable round trips found based on your search criteria.
+        </div>
+    {% endif %}
+{% endif %}
 
-</body>
-</html> 
+<div class="mt-4 text-center">
+    <a href="{{ request.referrer or url_for('index') }}" class="btn btn-secondary">&larr; Back to Search</a>
+</div>
+
+{% endblock %} 

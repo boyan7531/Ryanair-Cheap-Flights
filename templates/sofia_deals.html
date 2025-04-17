@@ -1,80 +1,93 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Top 10 Ryanair Deals from Sofia</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <nav>
-        <ul>
-            <li><a href="{{ url_for('index') }}">Single Round Trip</a></li>
-            <li><a href="{{ url_for('multi_round_trip_form') }}">Multi-City Round Trip</a></li>
-            <li><a href="{{ url_for('sofia_deals') }}" class="active">Sofia Deals</a></li>
-            <li><a href="{{ url_for('configure_notifications') }}">Notification Settings</a></li>
-        </ul>
-    </nav>
+{% extends "base.html" %}
+{% block title %}Sofia Deals - Ryanair Deals{% endblock %}
 
-    <h1>Cheapest Ryanair Round Trips from Sofia (SOF) - Best Deal per Destination</h1>
+{% block content %}
+<h1>Cheapest Ryanair Round Trips from Sofia (SOF)</h1>
+<p class="lead">Best Deal per Destination</p>
 
-    <!-- Form for selecting month and duration -->
-    <form method="GET" action="{{ url_for('sofia_deals') }}" style="margin-bottom: 20px; padding: 15px; background-color: #eee; border-radius: 5px; display: flex; gap: 15px; align-items: center;">
-        <div style="flex-grow: 1;">
-            <label for="outbound_month" style="display: inline-block; margin-right: 5px;">Month:</label>
-            <input type="month" id="outbound_month" name="outbound_month" required value="{{ search_month }}" style="width: auto;">
-        </div>
-        <div style="flex-grow: 1;">
-            <label for="duration_from" style="display: inline-block; margin-right: 5px;">Min Days:</label>
-            <input type="number" id="duration_from" name="duration_from" min="1" value="{{ duration_from }}" style="width: 60px;">
-        </div>
-        <div style="flex-grow: 1;">
-            <label for="duration_to" style="display: inline-block; margin-right: 5px;">Max Days:</label>
-            <input type="number" id="duration_to" name="duration_to" min="1" value="{{ duration_to }}" style="width: 60px;">
-        </div>
-        <button type="submit" style="width: auto; padding: 8px 15px;">Update Deals</button>
-    </form>
-
-    <p style="text-align: center; margin-top: -10px; margin-bottom: 20px;">Showing results for {{ search_month }} ({{duration_from}}-{{duration_to}} day trips)</p>
-
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <ul class=flashes>
-        {% for message in messages %}
-          <li>{{ message }}</li>
-        {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
-
-    <div class="results-container">
-        {% if top_trips %}
-            {% for trip in top_trips %}
-            <div class="trip-card">
-                <h3>{{ loop.index }}. {{ trip.origin_iata }} &rarr; {{ trip.destination_iata }}</h3>
-                <div class="trip-summary">
-                    Total Price: <strong>{{ trip.total_price }} {{ trip.currency }}</strong>
-                </div>
-                <div class="flight-details">
-                    <div>
-                        <h4>Outbound</h4>
-                        <p>Dep: {{ trip.outbound_dep_time | replace("T", " ") | replace("Z", "") }}</p>
-                        <p>Arr: {{ trip.outbound_arr_time | replace("T", " ") | replace("Z", "") }}</p>
-                    </div>
-                    <div>
-                        <h4>Inbound</h4>
-                        <p>Dep: {{ trip.inbound_dep_time | replace("T", " ") | replace("Z", "") }}</p>
-                        <p>Arr: {{ trip.inbound_arr_time | replace("T", " ") | replace("Z", "") }}</p>
-                    </div>
-                </div>
+<!-- Form for selecting month and duration -->
+<form method="GET" action="{{ url_for('sofia_deals') }}" class="needs-validation mb-4 p-3 bg-light border rounded" novalidate>
+    <div class="row g-3 align-items-end">
+        <div class="col-md-4 col-lg-4">
+            <label for="outbound_month" class="form-label">Month:</label>
+            <input type="month" class="form-control" id="outbound_month" name="outbound_month" required value="{{ search_month }}">
+            <div class="invalid-feedback">
+                Please select a month.
             </div>
-            {% endfor %}
-        {% else %}
-             {% if not get_flashed_messages() %}
-                <p class="no-results">No trips found matching the criteria.</p>
-             {% endif %}
-        {% endif %}
+        </div>
+        <div class="col-md-3 col-lg-2">
+            <label for="duration_from" class="form-label">Min Days:</label>
+            <input type="number" class="form-control" id="duration_from" name="duration_from" min="1" value="{{ duration_from }}" required>
+        </div>
+        <div class="col-md-3 col-lg-2">
+            <label for="duration_to" class="form-label">Max Days:</label>
+            <input type="number" class="form-control" id="duration_to" name="duration_to" min="1" value="{{ duration_to }}" required>
+        </div>
+        <div class="col-md-2 col-lg-4">
+            <button type="submit" class="btn btn-success w-100">Update Deals</button>
+        </div>
     </div>
+</form>
 
-</body>
-</html> 
+<p class="text-center text-muted mb-4">Showing results for {{ search_month }} ({{duration_from}}-{{duration_to}} day trips)</p>
+
+{# Flashed messages handled in base.html #}
+
+{% if top_trips %}
+     <div class="table-responsive">
+        <table class="table table-striped table-hover mt-3">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Destination</th>
+                    <th scope="col">Outbound</th>
+                    <th scope="col">Inbound</th>
+                    <th scope="col" class="text-end">Total Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trip in top_trips %}
+                <tr>
+                    <th scope="row">{{ loop.index }}</th>
+                    <td><strong>{{ trip.destination_iata }}</strong></td>
+                     <td>{{ trip.outbound_dep_time | replace('T', ' ') if trip.outbound_dep_time else 'N/A' }}</td>
+                     <td>{{ trip.inbound_dep_time | replace('T', ' ') if trip.inbound_dep_time else 'N/A' }}</td>
+                    <td class="text-end fw-bold fs-5">{{ trip.total_price }} {{ trip.currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    {% if not get_flashed_messages(with_categories=True) %}
+        <div class="alert alert-warning mt-4" role="alert">
+            No suitable round trips found based on your search criteria.
+        </div>
+    {% endif %}
+{% endif %}
+{% endblock %}
+
+{# Add Bootstrap form validation script #}
+{% block scripts_extra %}
+<script>
+// Example starter JavaScript for disabling form submissions if there are invalid fields
+(() => {
+  'use strict'
+
+  // Fetch all the forms we want to apply custom Bootstrap validation styles to
+  const forms = document.querySelectorAll('.needs-validation')
+
+  // Loop over them and prevent submission
+  Array.from(forms).forEach(form => {
+    form.addEventListener('submit', event => {
+      if (!form.checkValidity()) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+
+      form.classList.add('was-validated')
+    }, false)
+  })
+})()
+</script>
+{% endblock %} 
