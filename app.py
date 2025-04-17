@@ -584,8 +584,8 @@ def test_email():
     return f"Attempted to send test email to {recipient}. Check inbox and console log."
 
 # === Background Task for Finding Deals ===
-
-NOTIFICATION_THRESHOLD = 40.0
+# comment for test
+NOTIFICATION_THRESHOLD = 30.0
 
 def check_sofia_deals_background():
     """Scheduled task to check Sofia deals based on saved config."""
