@@ -3,3 +3,4 @@ requests
 Flask 
 APScheduler 
 Flask-Mail 
+gunicorn
