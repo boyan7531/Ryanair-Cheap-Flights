@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Multi-City Round Trip Result</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('index') }}">Single Round Trip</a></li>
+            <li><a href="{{ url_for('multi_round_trip_form') }}">Multi-City Round Trip</a></li>
+        </ul>
+    </nav>
+
+    <h1>Multi-City Round Trip Search Result</h1>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul class="flashes">
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    {% if cheapest_flight %}
+        <h2>Overall Cheapest Round Trip Flight Found</h2>
+        <div class="cheapest-result">
+            <p>
+                <strong>Origin:</strong> {{ cheapest_flight.origin_iata }}<br>
+                <strong>Destination:</strong> {{ cheapest_flight.destination_iata }}<br>
+                <strong>Outbound:</strong> {{ cheapest_flight.outbound_dep_time | replace("T", " ") | replace("Z", "") }}<br>
+                <strong>Inbound:</strong> {{ cheapest_flight.inbound_dep_time | replace("T", " ") | replace("Z", "") }}<br>
+                <strong>Total Price:</strong> <strong>{{ cheapest_flight.total_price }} {{ cheapest_flight.currency }}</strong>
+            </p>
+        </div>
+    {% else %}
+        {% if not get_flashed_messages() %}
+            <p class="no-results">Could not find any round trips matching your criteria.</p>
+        {% endif %}
+    {% endif %}
+
+    <div class="back-link" style="text-align: center; margin-top: 20px;">
+        <a href="{{ url_for('multi_round_trip_form') }}">&larr; Back to Multi-City Round Trip Search</a>
+    </div>
+
+</body>
+</html> 

@@ -1,78 +1,28 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Ryanair Cheap Round Trips</title>
-    <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9; }
-        h1 { text-align: center; color: #073590; }
-        form div { margin-bottom: 15px; position: relative; /* Needed for absolute positioning of dropdown */ }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type=text], input[type=month], input[type=number] {
-            width: 95%; /* Adjust width slightly */
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box; /* Include padding in width */
-        }
-        input[type=submit] {
-            background-color: #d90030;
-            color: white;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 1em;
-            transition: background-color 0.2s;
-        }
-        input[type=submit]:hover { background-color: #b80028; }
-        .flash-messages { list-style: none; padding: 0; margin: 20px 0; }
-        .flash-messages li {
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-            background-color: #f8d7da; /* Red for errors */
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        /* Autocomplete styles */
-        .autocomplete-items {
-            position: absolute;
-            border: 1px solid #d4d4d4;
-            border-bottom: none;
-            border-top: none;
-            z-index: 99;
-            /*position the autocomplete items to be the same width as the container:*/
-            top: 100%;
-            left: 0;
-            right: 0;
-            max-height: 200px; /* Limit height */
-            overflow-y: auto; /* Add scrollbar if needed */
-        }
-        .autocomplete-items div {
-            padding: 10px;
-            cursor: pointer;
-            background-color: #fff;
-            border-bottom: 1px solid #d4d4d4;
-        }
-        .autocomplete-items div:hover {
-            /*when hovering an item:*/
-            background-color: #e9e9e9;
-        }
-        .autocomplete-active {
-            /*when navigating through the items using the arrow keys:*/
-            background-color: DodgerBlue !important;
-            color: #ffffff;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ryanair Flight Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Removed jQuery and jQuery UI imports -->
 </head>
 <body>
-    <h1>Find Cheapest Ryanair Round Trips</h1>
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('index') }}" class="active">Single Round Trip</a></li>
+            <li><a href="{{ url_for('multi_round_trip_form') }}">Multi-City Round Trip</a></li>
+            <li><a href="{{ url_for('sofia_deals') }}">Sofia Deals</a></li>
+            <li><a href="{{ url_for('configure_notifications') }}">Notification Settings</a></li>
+        </ul>
+    </nav>
 
+    <h1>Search Ryanair Round Trip Flights</h1>
+
+    <!-- Display flashed messages -->
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <ul class=flash-messages>
+        <ul class=flashes>
         {% for message in messages %}
           <li>{{ message }}</li>
         {% endfor %}
@@ -80,117 +30,26 @@
       {% endif %}
     {% endwith %}
 
-    <form action="/search" method="post" autocomplete="off"> {# Disable browser autocomplete #}
-        {# Origin Input with Autocomplete #}
-        <div class="autocomplete">
-            <label for="origin_city">Origin City:</label>
-            <input type="text" id="origin_city" name="origin_city" required placeholder="e.g., Sofia" value="{{ origin_city if origin_city }}">
-            {# Container for suggestions - will be populated by JS #}
-            <div id="origin_suggestions" class="autocomplete-items"></div>
-        </div>
+    <form action="{{ url_for('search_flights') }}" method="post">
+        <label for="origin_iata">Origin Airport IATA:</label>
+        <input type="text" id="origin_iata" name="origin_iata" required pattern="[A-Za-z]{3}" title="Enter 3-letter IATA code (e.g., DUB)" placeholder="e.g., DUB" value="{{ origin_iata or '' }}">
 
-        {# Destination Input with Autocomplete #}
-        <div class="autocomplete">
-            <label for="destination_city">Destination City:</label>
-            <input type="text" id="destination_city" name="destination_city" required placeholder="e.g., Barcelona" value="{{ destination_city if destination_city }}">
-             {# Container for suggestions - will be populated by JS #}
-            <div id="destination_suggestions" class="autocomplete-items"></div>
-        </div>
+        <label for="destination_iata">Destination Airport IATA:</label>
+        <input type="text" id="destination_iata" name="destination_iata" required pattern="[A-Za-z]{3}" title="Enter 3-letter IATA code (e.g., STN)" placeholder="e.g., STN" value="{{ destination_iata or '' }}">
 
-        {# Rest of the form #}
-        <div>
-            <label for="outbound_month">Outbound Month:</label>
-            <input type="month" id="outbound_month" name="outbound_month" required value="{{ default_month }}">
-        </div>
-        <div>
-            <label for="duration_from">Min Trip Duration (days):</label>
-            <input type="number" id="duration_from" name="duration_from" min="1" value="{{ request.form.get('duration_from', '2') }}" required>
-        </div>
-         <div>
-            <label for="duration_to">Max Trip Duration (days):</label>
-            <input type="number" id="duration_to" name="duration_to" min="1" value="{{ request.form.get('duration_to', '7') }}" required>
-        </div>
-        <div>
-            <input type="submit" value="Search Flights">
-        </div>
+        <label for="outbound_month">Outbound Month:</label>
+        <input type="month" id="outbound_month" name="outbound_month" required value="{{ request.form.outbound_month or default_month }}">
+
+        <label for="duration_from">Min Duration (days):</label>
+        <input type="number" id="duration_from" name="duration_from" min="1" value="{{ request.form.duration_from or 2 }}">
+
+        <label for="duration_to">Max Duration (days):</label>
+        <input type="number" id="duration_to" name="duration_to" min="1" value="{{ request.form.duration_to or 7 }}">
+
+        <button type="submit">Search Flights</button>
     </form>
 
-    <script>
-        let cityNames = []; // Will hold the list of cities fetched from the API
-
-        // Fetch the city list when the page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            fetch('/api/cities')
-                .then(response => response.json())
-                .then(data => {
-                    cityNames = data;
-                    console.log("City names loaded:", cityNames.length);
-                    // Setup autocomplete after data is loaded
-                    setupAutocomplete(document.getElementById("origin_city"), document.getElementById("origin_suggestions"));
-                    setupAutocomplete(document.getElementById("destination_city"), document.getElementById("destination_suggestions"));
-                })
-                .catch(error => {
-                    console.error('Error fetching city names:', error);
-                    // Optionally display an error to the user
-                });
-        });
-
-        function setupAutocomplete(inputField, suggestionsContainer) {
-            inputField.addEventListener("input", function(e) {
-                let val = this.value;
-                closeAllLists(); // Close any existing lists
-                if (!val || val.length < 1) { return false; } // Don't search if input is empty or too short
-
-                let matches = cityNames.filter(city => city.toLowerCase().startsWith(val.toLowerCase()));
-                matches = matches.slice(0, 10); // Limit suggestions
-
-                if (matches.length > 0) {
-                    suggestionsContainer.style.display = 'block'; // Show container
-                } else {
-                    suggestionsContainer.style.display = 'none'; // Hide if no matches
-                    return;
-                }
-
-                matches.forEach(match => {
-                    let suggestionDiv = document.createElement("DIV");
-                    suggestionDiv.innerHTML = "<strong>" + match.substr(0, val.length) + "</strong>";
-                    suggestionDiv.innerHTML += match.substr(val.length);
-                    suggestionDiv.innerHTML += "<input type='hidden' value='" + match + "'>";
-
-                    suggestionDiv.addEventListener("click", function(e) {
-                        inputField.value = this.getElementsByTagName("input")[0].value;
-                        closeAllLists();
-                    });
-                    suggestionsContainer.appendChild(suggestionDiv);
-                });
-            });
-
-             // Hide dropdown when input loses focus (with a small delay to allow clicking)
-            inputField.addEventListener("blur", function(e) {
-                 setTimeout(closeAllLists, 150);
-            });
-        }
-
-        function closeAllLists(elmnt) {
-            // Close all autocomplete lists in the document,
-            // except the one passed as an argument (if any)
-            let itemsOrigin = document.getElementById("origin_suggestions");
-            let itemsDest = document.getElementById("destination_suggestions");
-
-            if (itemsOrigin) itemsOrigin.innerHTML = ""; itemsOrigin.style.display = 'none';
-            if (itemsDest) itemsDest.innerHTML = ""; itemsDest.style.display = 'none';
-
-        }
-
-        // Optional: Close lists if user clicks anywhere else on the document
-        document.addEventListener("click", function (e) {
-            // Check if the click was outside the input fields and their suggestion lists
-             if (!e.target.closest('.autocomplete')) {
-                 closeAllLists();
-             }
-        });
-
-    </script>
+    <!-- Removed JavaScript for autocomplete -->
 
 </body>
 </html> 

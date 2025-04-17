@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top 10 Ryanair Deals from Sofia</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('index') }}">Single Round Trip</a></li>
+            <li><a href="{{ url_for('multi_round_trip_form') }}">Multi-City Round Trip</a></li>
+            <li><a href="{{ url_for('sofia_deals') }}" class="active">Sofia Deals</a></li>
+            <li><a href="{{ url_for('configure_notifications') }}">Notification Settings</a></li>
+        </ul>
+    </nav>
+
+    <h1>Cheapest Ryanair Round Trips from Sofia (SOF) - Best Deal per Destination</h1>
+
+    <!-- Form for selecting month and duration -->
+    <form method="GET" action="{{ url_for('sofia_deals') }}" style="margin-bottom: 20px; padding: 15px; background-color: #eee; border-radius: 5px; display: flex; gap: 15px; align-items: center;">
+        <div style="flex-grow: 1;">
+            <label for="outbound_month" style="display: inline-block; margin-right: 5px;">Month:</label>
+            <input type="month" id="outbound_month" name="outbound_month" required value="{{ search_month }}" style="width: auto;">
+        </div>
+        <div style="flex-grow: 1;">
+            <label for="duration_from" style="display: inline-block; margin-right: 5px;">Min Days:</label>
+            <input type="number" id="duration_from" name="duration_from" min="1" value="{{ duration_from }}" style="width: 60px;">
+        </div>
+        <div style="flex-grow: 1;">
+            <label for="duration_to" style="display: inline-block; margin-right: 5px;">Max Days:</label>
+            <input type="number" id="duration_to" name="duration_to" min="1" value="{{ duration_to }}" style="width: 60px;">
+        </div>
+        <button type="submit" style="width: auto; padding: 8px 15px;">Update Deals</button>
+    </form>
+
+    <p style="text-align: center; margin-top: -10px; margin-bottom: 20px;">Showing results for {{ search_month }} ({{duration_from}}-{{duration_to}} day trips)</p>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul class=flashes>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <div class="results-container">
+        {% if top_trips %}
+            {% for trip in top_trips %}
+            <div class="trip-card">
+                <h3>{{ loop.index }}. {{ trip.origin_iata }} &rarr; {{ trip.destination_iata }}</h3>
+                <div class="trip-summary">
+                    Total Price: <strong>{{ trip.total_price }} {{ trip.currency }}</strong>
+                </div>
+                <div class="flight-details">
+                    <div>
+                        <h4>Outbound</h4>
+                        <p>Dep: {{ trip.outbound_dep_time | replace("T", " ") | replace("Z", "") }}</p>
+                        <p>Arr: {{ trip.outbound_arr_time | replace("T", " ") | replace("Z", "") }}</p>
+                    </div>
+                    <div>
+                        <h4>Inbound</h4>
+                        <p>Dep: {{ trip.inbound_dep_time | replace("T", " ") | replace("Z", "") }}</p>
+                        <p>Arr: {{ trip.inbound_arr_time | replace("T", " ") | replace("Z", "") }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+             {% if not get_flashed_messages() %}
+                <p class="no-results">No trips found matching the criteria.</p>
+             {% endif %}
+        {% endif %}
+    </div>
+
+</body>
+</html> 

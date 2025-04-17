@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-City Round Trip Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('index') }}">Single Round Trip</a></li>
+            <li><a href="{{ url_for('multi_round_trip_form') }}" class="active">Multi-City Round Trip</a></li>
+            <li><a href="{{ url_for('sofia_deals') }}">Sofia Deals</a></li>
+            <li><a href="{{ url_for('configure_notifications') }}">Notification Settings</a></li>
+        </ul>
+    </nav>
+
+    <h1>Search Cheapest Ryanair Round Trip Flights (Multi-City)</h1>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul class=flashes>
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form action="{{ url_for('process_multi_round_trip') }}" method="post">
+        <label for="origin_iatas">Origin Airport IATAs (one per line):</label>
+        <textarea id="origin_iatas" name="origin_iatas" rows="5" required placeholder="e.g.
+DUB
+STN
+BGY">{{ origin_iatas_raw or '' }}</textarea>
+
+        <label for="destination_iatas">Destination Airport IATAs (one per line):</label>
+        <textarea id="destination_iatas" name="destination_iatas" rows="5" required placeholder="e.g.
+BCN
+SOF
+VIE">{{ destination_iatas_raw or '' }}</textarea>
+
+        <label for="outbound_month">Outbound Month:</label>
+        <input type="month" id="outbound_month" name="outbound_month" required value="{{ outbound_month or default_month }}">
+
+        <label for="duration_from">Min Duration (days):</label>
+        <input type="number" id="duration_from" name="duration_from" min="1" value="{{ duration_from or 2 }}">
+
+        <label for="duration_to">Max Duration (days):</label>
+        <input type="number" id="duration_to" name="duration_to" min="1" value="{{ duration_to or 7 }}">
+
+        <button type="submit">Find Cheapest Round Trips</button>
+    </form>
+
+</body>
+</html> 

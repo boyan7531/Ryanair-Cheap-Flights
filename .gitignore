@@ -1,0 +1,7 @@
+# Environment variables - DO NOT COMMIT!
+.env
+.env.*
+!.env.example
+
+# Virtual Environment
+venv/ 

@@ -1,4 +1,5 @@
 ryanair-py==3.0.0 
 requests 
 Flask 
-airportsdata 
+APScheduler 
+Flask-Mail 
