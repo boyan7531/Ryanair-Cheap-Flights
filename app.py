@@ -585,11 +585,12 @@ def test_email():
 
 # === Background Task for Finding Deals ===
 # comment for test
-NOTIFICATION_THRESHOLD = 30.0
+NOTIFICATION_THRESHOLD = 90.0 # Changed from 30.0
 
 def check_sofia_deals_background():
     """Scheduled task to check Sofia deals based on saved config."""
-    print(f"\n[{datetime.now()}] Running background check for Sofia deals...")
+    # Modified print statement to reflect the specific check
+    print(f"\n[{datetime.now()}] Running background check for SOF-BCN deals...")
 
     # Load configured settings
     config = load_notification_settings()
@@ -598,6 +599,7 @@ def check_sofia_deals_background():
     duration_to = config.get('duration_to', '7')   # Default if missing
     origin_iata = "SOF"
     currency = "EUR"
+    target_destination_iata = "BCN" # Added specific destination
 
     # Validate loaded settings before proceeding
     try:
@@ -613,69 +615,74 @@ def check_sofia_deals_background():
         # Validate duration format from config
         int(duration_from)
         int(duration_to)
-        print(f"  Using configured settings: Month={search_month_str}, Duration={duration_from}-{duration_to}")
+        # Modified print statement
+        print(f"  Using configured settings for SOF-BCN: Month={search_month_str}, Duration={duration_from}-{duration_to}")
     except (AttributeError, ValueError, TypeError) as e:
-        print(f"  ERROR: Invalid or missing notification configuration in '{CONFIG_FILE}'. Skipping background check. Error: {e}")
+        print(f"  ERROR: Invalid or missing notification configuration in '{CONFIG_FILE}'. Skipping SOF-BCN check. Error: {e}")
         return # Stop the task if config is bad
 
     found_deals_under_threshold = []
-    for destination_iata in SOFIA_DESTINATIONS:
-        api_url = ROUND_TRIP_API_TEMPLATE.format(
-            origin_iata=origin_iata, destination_iata=destination_iata,
-            out_date_from=out_date_from.strftime("%Y-%m-%d"), out_date_to=out_date_to.strftime("%Y-%m-%d"),
-            in_date_from=in_date_from.strftime("%Y-%m-%d"), in_date_to=in_date_to.strftime("%Y-%m-%d"),
-            duration_from=duration_from, duration_to=duration_to, currency=currency
-        )
-        try:
-            response = requests.get(api_url, headers=HEADERS, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            if 'fares' in data and data['fares']:
-                for fare in data['fares']:
-                    try:
-                        total_price = fare.get('summary', {}).get('price', {}).get('value')
-                        if total_price is not None and total_price < NOTIFICATION_THRESHOLD:
-                            trip_details = {
-                                'origin_iata': fare.get('outbound', {}).get('departureAirport', {}).get('iataCode'),
-                                'destination_iata': fare.get('outbound', {}).get('arrivalAirport', {}).get('iataCode'),
-                                'total_price': total_price,
-                                'currency': fare.get('summary', {}).get('price', {}).get('currencyCode'),
-                                'outbound_dep_time': fare.get('outbound', {}).get('departureDate'),
-                                'inbound_dep_time': fare.get('inbound', {}).get('departureDate')
-                            }
-                            found_deals_under_threshold.append(trip_details)
-                            break
-                    except (KeyError, TypeError):
-                        continue
-        except Exception as e:
-            print(f"    Error checking {destination_iata} in background: {e}")
-            continue
+    # Removed loop, directly use target_destination_iata
+    api_url = ROUND_TRIP_API_TEMPLATE.format(
+        origin_iata=origin_iata, destination_iata=target_destination_iata,
+        out_date_from=out_date_from.strftime("%Y-%m-%d"), out_date_to=out_date_to.strftime("%Y-%m-%d"),
+        in_date_from=in_date_from.strftime("%Y-%m-%d"), in_date_to=in_date_to.strftime("%Y-%m-%d"),
+        duration_from=duration_from, duration_to=duration_to, currency=currency
+    )
+    try:
+        response = requests.get(api_url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        if 'fares' in data and data['fares']:
+            for fare in data['fares']:
+                try:
+                    total_price = fare.get('summary', {}).get('price', {}).get('value')
+                    if total_price is not None and total_price < NOTIFICATION_THRESHOLD:
+                        trip_details = {
+                            'origin_iata': fare.get('outbound', {}).get('departureAirport', {}).get('iataCode'),
+                            'destination_iata': fare.get('outbound', {}).get('arrivalAirport', {}).get('iataCode'),
+                            'total_price': total_price,
+                            'currency': fare.get('summary', {}).get('price', {}).get('currencyCode'),
+                            'outbound_dep_time': fare.get('outbound', {}).get('departureDate'),
+                            'inbound_dep_time': fare.get('inbound', {}).get('departureDate')
+                        }
+                        found_deals_under_threshold.append(trip_details)
+                        # Note: Removed 'break' here - check all fares in case a later one is cheaper
+                        #       than the first but still under threshold (though unlikely for Ryanair)
+                except (KeyError, TypeError):
+                    continue # Skip parsing error for a specific fare
+    except Exception as e:
+        print(f"    Error checking {target_destination_iata} in background: {e}")
+        # Allow the function to continue to update last_checked time even if API fails
 
     # Update global store
     global background_deal_findings
     background_deal_findings["last_checked"] = datetime.now()
-    background_deal_findings["deals_under_25"] = found_deals_under_threshold
-    print(f"[{datetime.now()}] Background check finished. Found {len(found_deals_under_threshold)} deals under {NOTIFICATION_THRESHOLD} EUR.")
+    # Simplified update logic as we only check one destination
+    background_deal_findings["deals_under_25"] = found_deals_under_threshold # Rename this key later maybe?
+    # Modified print statement
+    print(f"[{datetime.now()}] Background check for SOF-BCN finished. Found {len(found_deals_under_threshold)} deal(s) under {NOTIFICATION_THRESHOLD} EUR.")
 
-    # --- Email Notification Logic --- 
+    # --- Email Notification Logic --- (Remains largely the same, threshold is checked implicitly)
     newly_found_deals_for_email = []
     if found_deals_under_threshold:
         for deal in found_deals_under_threshold:
+            # Unique identifier uses specific details
             deal_id = f"{deal['destination_iata']}-{deal['total_price']}-{deal['outbound_dep_time']}"
             if deal_id not in background_deal_findings["notified_deals"]:
                 newly_found_deals_for_email.append(deal)
                 # Add to notified set *after* successful send attempt below
 
     if newly_found_deals_for_email:
-        print(f"Found {len(newly_found_deals_for_email)} new deals under {NOTIFICATION_THRESHOLD} EUR to notify via email.")
+        print(f"Found {len(newly_found_deals_for_email)} new SOF-BCN deal(s) under {NOTIFICATION_THRESHOLD} EUR to notify via email.")
         if not MAIL_RECIPIENT:
             print("  ERROR: MAIL_RECIPIENT environment variable not set. Cannot send email.")
             return # Exit function if no recipient is configured
 
-        subject = f"Ryanair Deal Alert! {len(newly_found_deals_for_email)} new flight(s) under {NOTIFICATION_THRESHOLD} EUR from SOF"
-        body_lines = [f"Found {len(newly_found_deals_for_email)} new round trip deal(s) from Sofia (SOF) under {NOTIFICATION_THRESHOLD} EUR:", ""]
+        subject = f"Ryanair Deal Alert! SOF-BCN flight(s) under {NOTIFICATION_THRESHOLD} EUR found!"
+        body_lines = [f"Found {len(newly_found_deals_for_email)} new round trip deal(s) from Sofia (SOF) to Barcelona (BCN) under {NOTIFICATION_THRESHOLD} EUR:", ""]
         for deal in newly_found_deals_for_email:
-            body_lines.append(f"- {deal['destination_iata']} for {deal['total_price']}{deal['currency']} (Outbound: {deal['outbound_dep_time'][:10]}, Inbound: {deal['inbound_dep_time'][:10]})")
+            body_lines.append(f"- Price: {deal['total_price']}{deal['currency']} (Outbound: {deal['outbound_dep_time'][:10]}, Inbound: {deal['inbound_dep_time'][:10]})")
         body = "\n".join(body_lines)
 
         # Move Message creation and sending inside app_context
