@@ -3,51 +3,74 @@
 
 {% block content %}
 <h1>Configure Background Email Notifications</h1>
-<p class="lead">Set the parameters for the automatic background check (currently runs every 2 minutes).</p>
-<p>Emails will be sent to <code>{{ mail_recipient or '[Not Set]' }}</code> if SOF-BCN deals under €{{ notification_threshold }} are found for these settings.</p>
+<p class="lead">Add or remove rules for the automatic background check.</p>
+<p>Emails will be sent to <code>{{ mail_recipient or '[Not Set]' }}</code> if deals matching a rule's criteria are found.</p>
 
-{# Flashed messages handled in base.html #}
-
-<form method="POST" action="{{ url_for('configure_notifications') }}" class="needs-validation mt-4" novalidate>
-    <div class="row g-3">
-        <div class="col-md-4 mb-3">
-            <label for="outbound_month" class="form-label">Month to Check:</label>
-            <input type="month" class="form-control" id="outbound_month" name="outbound_month" required value="{{ current_settings.outbound_month }}">
-             <div class="invalid-feedback">
-                Please select a month.
+{# --- Section to Display Existing Rules --- #}
+<h2 class="mt-5">Current Notification Rules</h2>
+{% if notification_rules %}
+    <ul class="list-group mb-4">
+        {% for rule in notification_rules %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <strong>{{ rule.origin_iata }} &rarr; {{ rule.destination_iata }}</strong> ({{ rule.search_month }})
+                <br>
+                <small class="text-muted">Duration: {{ rule.duration_from }}-{{ rule.duration_to }} days, Threshold: &lt; {{ rule.threshold }} EUR</small>
             </div>
-       </div>
+            {# Form to delete this specific rule #}
+            <form action="{{ url_for('delete_notification_rule') }}" method="post" style="display: inline;">
+                <input type="hidden" name="rule_id" value="{{ rule.id }}">
+                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this rule?');">
+                    &times; Delete
+                </button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <div class="alert alert-info">No notification rules configured yet.</div>
+{% endif %}
 
-        <div class="col-md-4 mb-3">
-            <label for="duration_from" class="form-label">Min Duration (days):</label>
-            <input type="number" class="form-control" id="duration_from" name="duration_from" min="1" value="{{ current_settings.duration_from }}" required>
-             <div class="invalid-feedback">
-                Please enter a minimum duration.
-            </div>
-       </div>
-
-        <div class="col-md-4 mb-3">
-            <label for="duration_to" class="form-label">Max Duration (days):</label>
-            <input type="number" class="form-control" id="duration_to" name="duration_to" min="1" value="{{ current_settings.duration_to }}" required>
-            <div class="invalid-feedback">
-                Please enter a maximum duration.
-            </div>
+{# --- Form to Add New Rule --- #}
+<h2 class="mt-5">Add New Notification Rule</h2>
+{# Note: Using submitted_data to repopulate form on validation error #}
+<form method="POST" action="{{ url_for('configure_notifications') }}" class="needs-validation p-3 border rounded bg-light" novalidate>
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <label for="origin_iata" class="form-label">Origin IATA:</label>
+            <input type="text" class="form-control" id="origin_iata" name="origin_iata" required pattern="[A-Za-z]{3}" title="3-letter IATA code" placeholder="e.g., SOF" value="{{ submitted_data.get('origin_iata', '') }}">
+             <div class="invalid-feedback">Valid 3-letter Origin IATA required.</div>
+        </div>
+        <div class="col-md-6">
+            <label for="destination_iata" class="form-label">Destination IATA:</label>
+            <input type="text" class="form-control" id="destination_iata" name="destination_iata" required pattern="[A-Za-z]{3}" title="3-letter IATA code" placeholder="e.g., BCN" value="{{ submitted_data.get('destination_iata', '') }}">
+             <div class="invalid-feedback">Valid 3-letter Destination IATA required.</div>
         </div>
     </div>
-
-    <button type="submit" class="btn btn-primary mt-3">Save Notification Settings</button>
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <label for="outbound_month" class="form-label">Month to Check:</label>
+            <input type="month" class="form-control" id="outbound_month" name="outbound_month" required value="{{ submitted_data.get('outbound_month', '') }}">
+             <div class="invalid-feedback">Please select a month.</div>
+       </div>
+        <div class="col-md-2">
+            <label for="duration_from" class="form-label">Min Days:</label>
+            <input type="number" class="form-control" id="duration_from" name="duration_from" min="1" value="{{ submitted_data.get('duration_from', '2') }}" required>
+             <div class="invalid-feedback">Req.</div>
+       </div>
+        <div class="col-md-2">
+            <label for="duration_to" class="form-label">Max Days:</label>
+            <input type="number" class="form-control" id="duration_to" name="duration_to" min="1" value="{{ submitted_data.get('duration_to', '7') }}" required>
+            <div class="invalid-feedback">Req.</div>
+        </div>
+         <div class="col-md-4">
+            <label for="threshold" class="form-label">Price Under (&euro;):</label>
+            <input type="number" step="0.01" class="form-control" id="threshold" name="threshold" min="0.01" value="{{ submitted_data.get('threshold', '50') }}" required placeholder="e.g., 90.00">
+             <div class="invalid-feedback">Valid price required.</div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Add Notification Rule</button>
 </form>
-
-{# Display current settings separately #}
-<div class="mt-5 p-3 border rounded bg-light">
-    <h5 class="mb-3">Current Settings Used by Background Checker:</h5>
-    <p class="mb-1">
-        <strong>Month:</strong> <code>{{ current_settings.outbound_month }}</code>
-    </p>
-     <p class="mb-0">
-        <strong>Duration:</strong> <code>{{ current_settings.duration_from }}</code> - <code>{{ current_settings.duration_to }}</code> days
-    </p>
-</div>
 
 <div class="mt-4 text-center">
     <a href="{{ url_for('test_email') }}" class="btn btn-outline-secondary btn-sm">Send Test Email</a>

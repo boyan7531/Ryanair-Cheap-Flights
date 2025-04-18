@@ -1,0 +1,11 @@
+[
+    {
+        "id": "04438851-179a-4a2e-b309-991bd438ea0e",
+        "origin_iata": "SOF",
+        "destination_iata": "BCN",
+        "search_month": "2025-05",
+        "duration_from": 2,
+        "duration_to": 7,
+        "threshold": 110.0
+    }
+]

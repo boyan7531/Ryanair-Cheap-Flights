@@ -7,6 +7,7 @@ from datetime import date, timedelta, datetime
 import calendar
 import atexit # To shut down scheduler
 import logging # For scheduler logging
+import uuid # Added for generating unique IDs
 
 from flask import Flask, render_template, request, flash, jsonify, redirect, url_for # Added redirect, url_for
 from flask_mail import Mail, Message # Added Mail, Message
@@ -31,31 +32,32 @@ MAIL_RECIPIENT = os.environ.get('MAIL_RECIPIENT') # Email address to send notifi
 mail = Mail(app)
 
 # --- Notification Config File ---
-CONFIG_FILE = 'notification_config.json'
+NOTIFICATION_RULES_FILE = 'notification_rules.json' # Renamed file
 
-def load_notification_settings():
-    """Loads notification settings from JSON file."""
+def load_notification_rules(): # Renamed function
+    """Loads the list of notification rules from JSON file."""
     try:
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
+        with open(NOTIFICATION_RULES_FILE, 'r') as f:
+            rules = json.load(f)
+            if isinstance(rules, list):
+                return rules
+            else:
+                print(f"Warning: Content of {NOTIFICATION_RULES_FILE} is not a list. Returning empty list.")
+                return [] # Return empty list if format is wrong
     except (FileNotFoundError, json.JSONDecodeError):
-        # Return defaults if file not found or invalid
-        today = date.today()
-        default_month = (today.replace(day=1) + timedelta(days=32)).strftime('%Y-%m')
-        return {
-            'outbound_month': default_month,
-            'duration_from': '2',
-            'duration_to': '7'
-        }
+        return [] # Return empty list if file not found or invalid
 
-def save_notification_settings(settings):
-    """Saves notification settings to JSON file."""
+def save_notification_rules(rules): # Renamed function
+    """Saves the list of notification rules to JSON file."""
+    if not isinstance(rules, list):
+        print("Error: Attempted to save non-list data as notification rules.")
+        return False
     try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(settings, f, indent=4)
+        with open(NOTIFICATION_RULES_FILE, 'w') as f:
+            json.dump(rules, f, indent=4)
         return True
     except IOError as e:
-        print(f"Error saving notification settings: {e}")
+        print(f"Error saving notification rules: {e}")
         return False
 
 # --- Global Store for Background Task Results ---
@@ -402,10 +404,10 @@ SOFIA_DESTINATIONS = [
 @app.route('/sofia_deals')
 def sofia_deals():
     # Load current notification settings to populate the form defaults
-    current_notification_settings = load_notification_settings()
+    current_notification_settings = load_notification_rules()
 
     # Get parameters from URL (if submitted) or use notification settings as defaults for the form
-    search_month_str = request.args.get('outbound_month', current_notification_settings.get('outbound_month'))
+    search_month_str = request.args.get('outbound_month', current_notification_settings.get('search_month'))
     duration_from = request.args.get('duration_from', current_notification_settings.get('duration_from'))
     duration_to = request.args.get('duration_to', current_notification_settings.get('duration_to'))
 
@@ -524,57 +526,112 @@ def sofia_deals():
 @app.route('/configure_notifications', methods=['GET', 'POST'])
 def configure_notifications():
     if request.method == 'POST':
+        # --- Add New Rule Logic ---
+        origin_iata = request.form.get('origin_iata', '').strip().upper()
+        destination_iata = request.form.get('destination_iata', '').strip().upper()
         search_month_str = request.form.get('outbound_month')
-        duration_from = request.form.get('duration_from')
-        duration_to = request.form.get('duration_to')
+        duration_from_str = request.form.get('duration_from')
+        duration_to_str = request.form.get('duration_to')
+        threshold_str = request.form.get('threshold')
 
-        # Basic validation (can be enhanced)
-        valid = True
+        errors = []
+        iata_pattern = re.compile(r"^[A-Za-z]{3}$")
+
+        # --- Validation --- #
+        if not origin_iata or not iata_pattern.match(origin_iata):
+            errors.append("Valid 3-letter Origin IATA is required.")
+        if not destination_iata or not iata_pattern.match(destination_iata):
+            errors.append("Valid 3-letter Destination IATA is required.")
+        if origin_iata and destination_iata and origin_iata == destination_iata:
+             errors.append("Origin and Destination cannot be the same.")
+
         try:
             year, month = map(int, search_month_str.split('-'))
-            if not (1 <= month <= 12):
-                 raise ValueError("Invalid month")
-            int_duration_from = int(duration_from)
-            int_duration_to = int(duration_to)
-            if int_duration_from < 1 or int_duration_to < 1 or int_duration_from > int_duration_to:
-                 raise ValueError("Invalid duration range")
+            if not (1 <= month <= 12) or year < date.today().year:
+                raise ValueError("Invalid month/year")
         except (ValueError, TypeError, AttributeError):
-            valid = False
-            flash("Invalid input. Please check month and duration values.", "error")
+            errors.append("Valid Month (YYYY-MM) is required.")
 
-        if valid:
-            settings = {
-                'outbound_month': search_month_str,
+        try:
+            duration_from = int(duration_from_str)
+            duration_to = int(duration_to_str)
+            if duration_from < 1 or duration_to < 1 or duration_from > duration_to:
+                 raise ValueError("Invalid duration range")
+        except (ValueError, TypeError):
+             errors.append("Valid Min/Max Durations (positive numbers, Min <= Max) are required.")
+
+        try:
+            threshold = float(threshold_str)
+            if threshold <= 0:
+                raise ValueError("Threshold must be positive")
+        except (ValueError, TypeError):
+            errors.append("Valid positive Price Threshold is required.")
+        # --- End Validation --- #
+
+        if not errors:
+            # Create new rule
+            new_rule = {
+                'id': str(uuid.uuid4()), # Generate unique ID
+                'origin_iata': origin_iata,
+                'destination_iata': destination_iata,
+                'search_month': search_month_str,
                 'duration_from': duration_from,
-                'duration_to': duration_to
+                'duration_to': duration_to,
+                'threshold': threshold
             }
-            if save_notification_settings(settings):
-                flash("Notification settings saved successfully! The background checker will use these parameters.", "success")
+
+            # Load current rules, add new one, save
+            current_rules = load_notification_rules()
+            current_rules.append(new_rule)
+            if save_notification_rules(current_rules):
+                flash("Notification rule added successfully!", "success")
             else:
-                flash("Error saving notification settings. Please check server logs.", "error")
-            return redirect(url_for('configure_notifications')) # Redirect doesn't need context
+                flash("Error saving notification rules. Please check server logs.", "error")
+            return redirect(url_for('configure_notifications')) # Redirect after successful add
         else:
-            # If validation fails, reload form with submitted values and 'now'
-            current_settings = {
-                 'outbound_month': search_month_str,
-                 'duration_from': duration_from,
-                 'duration_to': duration_to
-            }
-            # Pass 'now', current settings, recipient, and threshold
-            return render_template('configure_notifications.html', 
-                                   current_settings=current_settings, 
-                                   mail_recipient=MAIL_RECIPIENT, 
-                                   notification_threshold=NOTIFICATION_THRESHOLD, 
+            # If validation fails, flash errors and reload form
+            for error in errors:
+                flash(error, "error")
+            # Load existing rules to display them alongside the error message
+            notification_rules = load_notification_rules()
+            # Return submitted values to repopulate form
+            submitted_data = request.form.to_dict()
+            return render_template('configure_notifications.html',
+                                   notification_rules=notification_rules,
+                                   mail_recipient=MAIL_RECIPIENT,
+                                   submitted_data=submitted_data, # Pass back submitted data
                                    now=datetime.utcnow())
 
-    # GET request: Load current settings and display the form, pass 'now'
-    current_settings = load_notification_settings()
-    # Pass 'now', current settings, recipient, and threshold
+    # --- GET Request Logic --- #
+    notification_rules = load_notification_rules()
+    # Pass empty dict for submitted_data on GET
     return render_template('configure_notifications.html', 
-                           current_settings=current_settings, 
+                           notification_rules=notification_rules, 
                            mail_recipient=MAIL_RECIPIENT, 
-                           notification_threshold=NOTIFICATION_THRESHOLD, 
+                           submitted_data={},
                            now=datetime.utcnow())
+
+# === Route for Deleting a Notification Rule ===
+@app.route('/delete_notification_rule', methods=['POST'])
+def delete_notification_rule():
+    rule_id_to_delete = request.form.get('rule_id')
+    if not rule_id_to_delete:
+        flash("Invalid request: Missing rule ID for deletion.", "error")
+        return redirect(url_for('configure_notifications'))
+
+    current_rules = load_notification_rules()
+    # Filter out the rule with the matching ID
+    updated_rules = [rule for rule in current_rules if rule.get('id') != rule_id_to_delete]
+
+    if len(updated_rules) < len(current_rules): # Check if a rule was actually removed
+        if save_notification_rules(updated_rules):
+            flash("Notification rule deleted successfully.", "success")
+        else:
+            flash("Error saving rules after deletion. Please check server logs.", "error")
+    else:
+        flash("Rule not found for deletion.", "warning") # Rule ID didn't match any existing rule
+
+    return redirect(url_for('configure_notifications'))
 
 # === Test Email Route ===
 @app.route('/test_email')
@@ -603,131 +660,139 @@ def test_email():
     return f"Attempted to send test email to {recipient}. Check inbox and console log."
 
 # === Background Task for Finding Deals ===
-# comment for test
-NOTIFICATION_THRESHOLD = 90.0 # Changed from 30.0
+# NOTIFICATION_THRESHOLD = 90.0 # Removed - Threshold is now per-rule
 
-def check_sofia_deals_background():
-    """Scheduled task to check Sofia deals based on saved config."""
-    # Modified print statement to reflect the specific check
-    print(f"\n[{datetime.now()}] Running background check for SOF-BCN deals...")
+def check_notification_rules(): # Renamed function
+    """Scheduled task to check deals based on saved notification rules."""
+    print(f"\n[{datetime.now()}] Running background check for configured notification rules...")
 
-    # Load configured settings
-    config = load_notification_settings()
-    search_month_str = config.get('outbound_month')
-    duration_from = config.get('duration_from', '2') # Default if missing
-    duration_to = config.get('duration_to', '7')   # Default if missing
-    origin_iata = "SOF"
-    currency = "EUR"
-    target_destination_iata = "BCN" # Added specific destination
+    rules = load_notification_rules()
+    if not rules:
+        print("  No notification rules configured. Skipping checks.")
+        return
 
-    # Validate loaded settings before proceeding
-    try:
-        year, month = map(int, search_month_str.split('-'))
-        out_date_from = date(year, month, 1)
-        last_day = get_last_day_of_month(year, month)
-        out_date_to = date(year, month, last_day)
-        in_date_from = out_date_from
-        next_month_date = (out_date_to.replace(day=1) + timedelta(days=32))
-        in_year, in_month = next_month_date.year, next_month_date.month
-        in_last_day = get_last_day_of_month(in_year, in_month)
-        in_date_to = date(in_year, in_month, in_last_day)
-        # Validate duration format from config
-        int(duration_from)
-        int(duration_to)
-        # Modified print statement
-        print(f"  Using configured settings for SOF-BCN: Month={search_month_str}, Duration={duration_from}-{duration_to}")
-    except (AttributeError, ValueError, TypeError) as e:
-        print(f"  ERROR: Invalid or missing notification configuration in '{CONFIG_FILE}'. Skipping SOF-BCN check. Error: {e}")
-        return # Stop the task if config is bad
+    global background_deal_findings # Need this to update notified_deals
+    
+    # --- Loop through each configured rule --- #
+    for rule in rules:
+        # Extract parameters for this rule
+        rule_id = rule.get('id')
+        origin_iata = rule.get('origin_iata')
+        destination_iata = rule.get('destination_iata')
+        search_month_str = rule.get('search_month')
+        duration_from = rule.get('duration_from') # Assuming these are stored as int/float now
+        duration_to = rule.get('duration_to')
+        threshold = rule.get('threshold')
+        currency = "EUR" # Assuming EUR for now, could be added to rule later
 
-    found_deals_under_threshold = []
-    # Removed loop, directly use target_destination_iata
-    api_url = ROUND_TRIP_API_TEMPLATE.format(
-        origin_iata=origin_iata, destination_iata=target_destination_iata,
-        out_date_from=out_date_from.strftime("%Y-%m-%d"), out_date_to=out_date_to.strftime("%Y-%m-%d"),
-        in_date_from=in_date_from.strftime("%Y-%m-%d"), in_date_to=in_date_to.strftime("%Y-%m-%d"),
-        duration_from=duration_from, duration_to=duration_to, currency=currency
-    )
-    try:
-        response = requests.get(api_url, headers=HEADERS, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        if 'fares' in data and data['fares']:
-            for fare in data['fares']:
-                try:
-                    total_price = fare.get('summary', {}).get('price', {}).get('value')
-                    if total_price is not None and total_price < NOTIFICATION_THRESHOLD:
-                        trip_details = {
-                            'origin_iata': fare.get('outbound', {}).get('departureAirport', {}).get('iataCode'),
-                            'destination_iata': fare.get('outbound', {}).get('arrivalAirport', {}).get('iataCode'),
-                            'total_price': total_price,
-                            'currency': fare.get('summary', {}).get('price', {}).get('currencyCode'),
-                            'outbound_dep_time': fare.get('outbound', {}).get('departureDate'),
-                            'inbound_dep_time': fare.get('inbound', {}).get('departureDate')
-                        }
-                        found_deals_under_threshold.append(trip_details)
-                        # Note: Removed 'break' here - check all fares in case a later one is cheaper
-                        #       than the first but still under threshold (though unlikely for Ryanair)
-                except (KeyError, TypeError):
-                    continue # Skip parsing error for a specific fare
-    except Exception as e:
-        print(f"    Error checking {target_destination_iata} in background: {e}")
-        # Allow the function to continue to update last_checked time even if API fails
+        # --- Basic validation of rule data --- #
+        if not all([rule_id, origin_iata, destination_iata, search_month_str, duration_from, duration_to, threshold]):
+            print(f"  Skipping invalid or incomplete rule: {rule}")
+            continue
 
-    # Update global store
-    global background_deal_findings
-    background_deal_findings["last_checked"] = datetime.now()
-    # Simplified update logic as we only check one destination
-    background_deal_findings["deals_under_25"] = found_deals_under_threshold # Rename this key later maybe?
-    # Modified print statement
-    print(f"[{datetime.now()}] Background check for SOF-BCN finished. Found {len(found_deals_under_threshold)} deal(s) under {NOTIFICATION_THRESHOLD} EUR.")
+        print(f"  Checking Rule ID {rule_id[:6]}...: {origin_iata} -> {destination_iata} ({search_month_str}, {duration_from}-{duration_to} days, < {threshold} {currency})")
 
-    # --- Email Notification Logic --- (Remains largely the same, threshold is checked implicitly)
-    newly_found_deals_for_email = []
-    if found_deals_under_threshold:
-        for deal in found_deals_under_threshold:
-            # Unique identifier uses specific details
-            deal_id = f"{deal['destination_iata']}-{deal['total_price']}-{deal['outbound_dep_time']}"
-            if deal_id not in background_deal_findings["notified_deals"]:
-                newly_found_deals_for_email.append(deal)
-                # Add to notified set *after* successful send attempt below
-
-    if newly_found_deals_for_email:
-        print(f"Found {len(newly_found_deals_for_email)} new SOF-BCN deal(s) under {NOTIFICATION_THRESHOLD} EUR to notify via email.")
-        if not MAIL_RECIPIENT:
-            print("  ERROR: MAIL_RECIPIENT environment variable not set. Cannot send email.")
-            return # Exit function if no recipient is configured
-
-        subject = f"Ryanair Deal Alert! SOF-BCN flight(s) under {NOTIFICATION_THRESHOLD} EUR found!"
-        body_lines = [f"Found {len(newly_found_deals_for_email)} new round trip deal(s) from Sofia (SOF) to Barcelona (BCN) under {NOTIFICATION_THRESHOLD} EUR:", ""]
-        for deal in newly_found_deals_for_email:
-            body_lines.append(f"- Price: {deal['total_price']}{deal['currency']} (Outbound: {deal['outbound_dep_time'][:10]}, Inbound: {deal['inbound_dep_time'][:10]})")
-        body = "\n".join(body_lines)
-
-        # Move Message creation and sending inside app_context
+        # --- Calculate Dates --- #
         try:
-            with app.app_context():
-                msg = Message(subject, recipients=[MAIL_RECIPIENT])
-                msg.body = body
-                mail.send(msg)
-            print(f"  Successfully sent email notification to {MAIL_RECIPIENT}")
-            # Update notified set only after successful send attempt
-            for deal in newly_found_deals_for_email:
-                 deal_id = f"{deal['destination_iata']}-{deal['total_price']}-{deal['outbound_dep_time']}"
-                 background_deal_findings["notified_deals"].add(deal_id)
+            year, month = map(int, search_month_str.split('-'))
+            out_date_from = date(year, month, 1)
+            last_day = get_last_day_of_month(year, month)
+            out_date_to = date(year, month, last_day)
+            in_date_from = out_date_from
+            next_month_date = (out_date_to.replace(day=1) + timedelta(days=32))
+            in_year_in, in_month_in = next_month_date.year, next_month_date.month
+            in_last_day = get_last_day_of_month(in_year_in, in_month_in)
+            in_date_to = date(in_year_in, in_month_in, in_last_day)
+        except (AttributeError, ValueError, TypeError) as e:
+            print(f"    ERROR: Invalid date/duration in rule {rule_id[:6]}. Skipping. Error: {e}")
+            continue # Skip this rule
+        # --- End Date Calculation --- #
+
+        # --- API Call --- #
+        found_deals_for_this_rule = []
+        api_url = ROUND_TRIP_API_TEMPLATE.format(
+            origin_iata=origin_iata, destination_iata=destination_iata,
+            out_date_from=out_date_from.strftime("%Y-%m-%d"), out_date_to=out_date_to.strftime("%Y-%m-%d"),
+            in_date_from=in_date_from.strftime("%Y-%m-%d"), in_date_to=in_date_to.strftime("%Y-%m-%d"),
+            duration_from=duration_from, duration_to=duration_to, currency=currency
+        )
+        try:
+            response = requests.get(api_url, headers=HEADERS, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            if 'fares' in data and data['fares']:
+                for fare in data['fares']:
+                    try:
+                        total_price = fare.get('summary', {}).get('price', {}).get('value')
+                        # Check against the threshold FOR THIS RULE
+                        if total_price is not None and total_price < threshold:
+                            trip_details = {
+                                'origin_iata': fare.get('outbound', {}).get('departureAirport', {}).get('iataCode'),
+                                'destination_iata': fare.get('outbound', {}).get('arrivalAirport', {}).get('iataCode'),
+                                'total_price': total_price,
+                                'currency': fare.get('summary', {}).get('price', {}).get('currencyCode'),
+                                'outbound_dep_time': fare.get('outbound', {}).get('departureDate'),
+                                'inbound_dep_time': fare.get('inbound', {}).get('departureDate')
+                            }
+                            found_deals_for_this_rule.append(trip_details)
+                    except (KeyError, TypeError):
+                        continue # Skip parsing error for specific fare
         except Exception as e:
-            print(f"  ERROR sending email notification: {e}")
-            # Decide if you want to retry or just skip marking as notified on failure
+            print(f"    Error checking API for rule {rule_id[:6]}: {e}")
+            continue # Skip this rule if API fails
+        # --- End API Call --- #
+
+        # --- Email Notification Logic (per rule) --- #
+        newly_found_deals_for_email = []
+        if found_deals_for_this_rule:
+            for deal in found_deals_for_this_rule:
+                # Make notified_deals key more specific including rule ID
+                deal_id = f"{rule_id}-{deal['destination_iata']}-{deal['total_price']}-{deal['outbound_dep_time']}"
+                if deal_id not in background_deal_findings["notified_deals"]:
+                    newly_found_deals_for_email.append(deal)
+                    # Note: Adding to notified set happens after potential successful send attempt
+
+        if newly_found_deals_for_email:
+            print(f"  Found {len(newly_found_deals_for_email)} new deal(s) matching Rule ID {rule_id[:6]} ({origin_iata}->{destination_iata} < {threshold} {currency}) to notify.")
+            if not MAIL_RECIPIENT:
+                print("    ERROR: MAIL_RECIPIENT environment variable not set. Cannot send email.")
+                continue # Skip email sending for this rule if recipient not set
+
+            subject = f"Ryanair Deal Alert! {origin_iata} -> {destination_iata} flight(s) under {threshold} {currency} found!"
+            body_lines = [f"Found {len(newly_found_deals_for_email)} new round trip deal(s) matching your rule ({origin_iata} -> {destination_iata} in {search_month_str}, {duration_from}-{duration_to} days, under {threshold} {currency}):", ""]
+            for deal in newly_found_deals_for_email:
+                body_lines.append(f"- Price: {deal['total_price']}{deal['currency']} (Outbound: {deal['outbound_dep_time'][:10]}, Inbound: {deal['inbound_dep_time'][:10]})")
+            body = "\n".join(body_lines)
+
+            # Send email within app context
+            try:
+                with app.app_context():
+                    msg = Message(subject, recipients=[MAIL_RECIPIENT])
+                    msg.body = body
+                    mail.send(msg)
+                print(f"    Successfully sent email notification to {MAIL_RECIPIENT} for rule {rule_id[:6]}")
+                # Update notified set only after successful send attempt
+                for deal in newly_found_deals_for_email:
+                     deal_id = f"{rule_id}-{deal['destination_iata']}-{deal['total_price']}-{deal['outbound_dep_time']}"
+                     background_deal_findings["notified_deals"].add(deal_id)
+            except Exception as e:
+                print(f"    ERROR sending email notification for rule {rule_id[:6]}: {e}")
+                # Decide if you want to retry or just skip marking as notified on failure
+
+    # --- End loop through rules --- #
+    background_deal_findings["last_checked"] = datetime.now() # Update overall last checked time
+    print(f"[{datetime.now()}] Background check finished.")
 
 # --- Initialize Scheduler ---
 logging.basicConfig()
 logging.getLogger('apscheduler').setLevel(logging.WARNING) # Reduce APScheduler noise
 
 scheduler = BackgroundScheduler(daemon=True)
-scheduler.add_job(check_sofia_deals_background, 'interval', minutes=2)
+# Schedule the NEW background task function
+scheduler.add_job(check_notification_rules, 'interval', minutes=2)
 try:
     scheduler.start()
-    print("Background deal checker scheduled to run every 2 minutes.")
+    print("Background notification rule checker scheduled to run every 2 minutes.")
     # Shut down the scheduler when exiting the app
     atexit.register(lambda: scheduler.shutdown())
 except (KeyboardInterrupt, SystemExit):
