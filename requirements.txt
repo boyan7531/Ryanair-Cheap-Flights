@@ -4,4 +4,4 @@ Flask
 APScheduler 
 Flask-Mail 
 gunicorn
-supabase-py
+supabase
