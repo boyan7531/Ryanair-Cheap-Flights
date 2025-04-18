@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Price Analysis: {{ origin_iata }} <-> {{ destination_iata }} ({{ month_str }}){% endblock %}
+
+{% block content %}
+<h1>Daily Price Analysis Results</h1>
+<h2 class="mb-3">{{ origin_iata }} <small class="text-muted">&harr;</small> {{ destination_iata }} <small class="text-muted">for {{ month_str }}</small></h2>
+
+{# Flashed messages handled in base.html - Display errors from API calls #}
+
+{% if results %}
+    <p class="text-muted">Showing cheapest currently available one-way prices per day ({{ currency }}).</p>
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover mt-3 table-bordered">
+            <thead class="table-light text-center">
+                <tr>
+                    <th scope="col">Day</th>
+                    <th scope="col">{{ origin_iata }} &rarr; {{ destination_iata }}</th>
+                    <th scope="col">{{ destination_iata }} &rarr; {{ origin_iata }}</th>
+                </tr>
+            </thead>
+            <tbody class="text-center">
+                {% for daily_result in results %}
+                <tr>
+                    <td>{{ daily_result.day }}</td>
+                    <td>
+                        {% if daily_result.out_price is not none %}
+                            {{ "%.2f"|format(daily_result.out_price) }}
+                        {% else %}
+                            <span class="text-muted">N/A</span>
+                        {% endif %}
+                    </td>
+                     <td>
+                        {% if daily_result.in_price is not none %}
+                             {{ "%.2f"|format(daily_result.in_price) }}
+                        {% else %}
+                            <span class="text-muted">N/A</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    {# Display message only if no specific error was flashed #}
+    {% if not get_flashed_messages(with_categories=True) %}
+        <div class="alert alert-warning mt-4" role="alert">
+            No daily price data found for the selected route and month.
+        </div>
+    {% endif %}
+{% endif %}
+
+<div class="mt-4">
+    <a href="{{ url_for('price_analysis') }}" class="btn btn-secondary">&larr; New Analysis</a>
+</div>
+
+{% endblock %} 

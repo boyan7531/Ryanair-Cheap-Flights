@@ -8,6 +8,7 @@ import calendar
 import atexit # To shut down scheduler
 import logging # For scheduler logging
 import uuid # Added for generating unique IDs
+from supabase import create_client, Client # Added for Supabase
 
 from flask import Flask, render_template, request, flash, jsonify, redirect, url_for # Added redirect, url_for
 from flask_mail import Mail, Message # Added Mail, Message
@@ -33,6 +34,20 @@ mail = Mail(app)
 
 # --- Notification Config File ---
 NOTIFICATION_RULES_FILE = 'notification_rules.json' # Renamed file
+
+# --- Supabase Setup ---
+supabase_url: str = os.environ.get("SUPABASE_URL")
+supabase_key: str = os.environ.get("SUPABASE_ANON_KEY")
+supabase: Client = None
+if supabase_url and supabase_key:
+    try:
+        supabase = create_client(supabase_url, supabase_key)
+        print("Supabase client initialized successfully.")
+    except Exception as e:
+        print(f"Error initializing Supabase client: {e}")
+else:
+    print("Warning: SUPABASE_URL or SUPABASE_ANON_KEY environment variables not set. Supabase integration disabled.")
+# ---------------------
 
 def load_notification_rules(): # Renamed function
     """Loads the list of notification rules from JSON file."""
@@ -783,20 +798,226 @@ def check_notification_rules(): # Renamed function
     background_deal_findings["last_checked"] = datetime.now() # Update overall last checked time
     print(f"[{datetime.now()}] Background check finished.")
 
+# === Background Task for Historical Data Collection ===
+
+def collect_price_history():
+    """Scheduled task to collect daily cheapest prices and store in Supabase."""
+    if not supabase: # Check if Supabase client is initialized
+        print(f"[{datetime.now()}] Skipping price history collection: Supabase client not available.")
+        return
+
+    # --- Configuration (Hardcoded for now) ---
+    routes_to_track = [
+        {"origin": "SOF", "destination": "BCN"}
+        # Add more routes here later if needed
+    ]
+    month_to_track_str = "2025-05" # Hardcoded month
+    currency = "EUR"
+    # -----------------------------------------
+
+    print(f"\n[{datetime.now()}] Running price history collection for {month_to_track_str}...")
+
+    try:
+        year, month = map(int, month_to_track_str.split('-'))
+        month_date = date(year, month, 1)
+        # last_day = get_last_day_of_month(year, month) # Not needed for API call
+    except (ValueError, TypeError, AttributeError):
+        print(f"  ERROR: Invalid month format '{month_to_track_str}' for history collection.")
+        return
+
+    # Helper function (similar to analysis one, but formats for DB)
+    def get_and_prepare_daily_prices(orig, dest, month_dt):
+        records_to_insert = []
+        api_url = ONE_WAY_MONTH_API_TEMPLATE.format(
+            origin_iata=orig,
+            destination_iata=dest,
+            month_date=month_dt.strftime("%Y-%m-%d"),
+            currency=currency
+        )
+        print(f"  Calling History API: {api_url}")
+        try:
+            response = requests.get(api_url, headers=HEADERS, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+            if 'fares' in data:
+                for day_fare in data['fares']:
+                    day_num = day_fare.get('day')
+                    price_info = day_fare.get('price')
+                    if day_num and price_info and price_info['value'] is not None:
+                        try:
+                            departure_dt = date(month_dt.year, month_dt.month, day_num)
+                            record = {
+                                # collected_at is handled by DB default
+                                'origin_iata': orig,
+                                'destination_iata': dest,
+                                'departure_date': departure_dt.isoformat(), # Store as YYYY-MM-DD string
+                                'price': price_info['value'],
+                                'currency': price_info.get('currencyCode', currency),
+                                'direction': 'outbound' if orig == route["origin"] else 'inbound'
+                            }
+                            records_to_insert.append(record)
+                        except ValueError: # Handle invalid day numbers (e.g., 31 in Feb)
+                            print(f"    Warning: Invalid day number {day_num} for {month_dt.strftime('%Y-%m')}. Skipping.")
+                            continue
+            return records_to_insert, None # Return records, no error
+        except requests.exceptions.RequestException as req_err:
+            err_msg = f"Network Error fetching history for {orig}->{dest}: {req_err}"
+            print(f"    {err_msg}")
+            return [], err_msg # Return empty list, error message
+        except Exception as e:
+            err_msg = f"Error fetching/parsing history for {orig}->{dest}: {e}"
+            print(f"    {err_msg}")
+            return [], err_msg # Return empty list, error message
+
+    # --- Collect and Insert Data for each route --- #
+    total_inserted = 0
+    for route in routes_to_track:
+        origin = route["origin"]
+        destination = route["destination"]
+        
+        # Get outbound and inbound prices
+        out_records, out_err = get_and_prepare_daily_prices(origin, destination, month_date)
+        in_records, in_err = get_and_prepare_daily_prices(destination, origin, month_date)
+        
+        all_records_for_route = out_records + in_records
+        
+        if not all_records_for_route:
+             print(f"  No price data found or error occurred for {origin}<->{destination}. Skipping DB insert.")
+             continue
+
+        # Insert into Supabase
+        try:
+            print(f"  Attempting to insert {len(all_records_for_route)} records for {origin}<->{destination}...")
+            data, count = supabase.table('price_history').insert(all_records_for_route).execute()
+            # Note: Supabase python client v1 might return count differently or not at all.
+            # V2 execute() returns a tuple like (data, count).
+            # We primarily care if an exception occurs.
+            print(f"  Successfully inserted records for {origin}<->{destination}.")
+            total_inserted += len(all_records_for_route) # Rough count, actual count might differ if some rows fail
+        except Exception as db_err:
+            print(f"  ERROR inserting price history for {origin}<->{destination} into Supabase: {db_err}")
+
+    print(f"[{datetime.now()}] Price history collection finished. Attempted to insert ~{total_inserted} records.")
+
 # --- Initialize Scheduler ---
 logging.basicConfig()
 logging.getLogger('apscheduler').setLevel(logging.WARNING) # Reduce APScheduler noise
 
 scheduler = BackgroundScheduler(daemon=True)
-# Schedule the NEW background task function
 scheduler.add_job(check_notification_rules, 'interval', minutes=2)
+# Add job for history collection (e.g., every hour)
+scheduler.add_job(collect_price_history, 'interval', hours=1, id='price_history_collector') # Added ID
+
 try:
     scheduler.start()
     print("Background notification rule checker scheduled to run every 2 minutes.")
+    print("Background price history collector scheduled to run every 1 hour.") # Added message
     # Shut down the scheduler when exiting the app
     atexit.register(lambda: scheduler.shutdown())
 except (KeyboardInterrupt, SystemExit):
     scheduler.shutdown()
+
+# === Price Analysis Route ===
+
+@app.route('/price_analysis')
+def price_analysis():
+    origin_iata = request.args.get('origin_iata', '').strip().upper()
+    destination_iata = request.args.get('destination_iata', '').strip().upper()
+    month_str = request.args.get('month', '')
+
+    # If no parameters provided, show the form
+    if not all([origin_iata, destination_iata, month_str]):
+        today = date.today()
+        # Default to next month for the form
+        default_month = (today.replace(day=1) + timedelta(days=32)).strftime('%Y-%m')
+        # Get form values from query args if partially provided
+        form_data = {
+            'origin_iata': origin_iata,
+            'destination_iata': destination_iata,
+            'month': month_str or default_month
+        }
+        return render_template('price_analysis_form.html', form_data=form_data, now=datetime.utcnow())
+
+    # --- Parameters provided, proceed with analysis --- #
+    print(f"Price Analysis Req: {origin_iata} <-> {destination_iata} for {month_str}")
+    results = [] # List to hold daily price info: {'day': d, 'out_price': p1, 'in_price': p2}
+    errors = []
+    currency = "EUR"
+
+    # --- Input Validation --- #
+    iata_pattern = re.compile(r"^[A-Za-z]{3}$")
+    if not iata_pattern.match(origin_iata) or not iata_pattern.match(destination_iata):
+        errors.append("Origin and Destination must be valid 3-letter IATA codes.")
+    if origin_iata == destination_iata:
+        errors.append("Origin and Destination cannot be the same.")
+    
+    try:
+        year, month = map(int, month_str.split('-'))
+        if not (1 <= month <= 12) or year < date.today().year:
+            raise ValueError("Invalid month/year")
+        month_date = date(year, month, 1)
+        last_day = get_last_day_of_month(year, month)
+    except (ValueError, TypeError, AttributeError):
+        errors.append("Invalid month format. Please use YYYY-MM.")
+    # --- End Validation --- #
+
+    if not errors:
+        # Helper function to get daily prices for one direction
+        def get_daily_prices(orig, dest, month_dt):
+            daily_prices = {}
+            api_url = ONE_WAY_MONTH_API_TEMPLATE.format(
+                origin_iata=orig,
+                destination_iata=dest,
+                month_date=month_dt.strftime("%Y-%m-%d"),
+                currency=currency
+            )
+            print(f"  Calling Analysis API: {api_url}")
+            try:
+                response = requests.get(api_url, headers=HEADERS, timeout=20)
+                response.raise_for_status()
+                data = response.json()
+                if 'fares' in data:
+                    for day_fare in data['fares']:
+                        if day_fare.get('price') and day_fare['price']['value'] is not None:
+                            daily_prices[day_fare['day']] = day_fare['price']['value']
+                return daily_prices, None # Return prices, no error
+            except requests.exceptions.HTTPError as http_err:
+                err_msg = f"API Error ({http_err.response.status_code}) for {orig}->{dest}"
+                print(f"    {err_msg}")
+                return {}, err_msg # Return empty dict, error message
+            except Exception as e:
+                err_msg = f"Error fetching data for {orig}->{dest}: {e}"
+                print(f"    {err_msg}")
+                return {}, err_msg # Return empty dict, error message
+
+        # Get outbound and inbound prices
+        outbound_prices, out_err = get_daily_prices(origin_iata, destination_iata, month_date)
+        inbound_prices, in_err = get_daily_prices(destination_iata, origin_iata, month_date)
+
+        if out_err: errors.append(out_err)
+        if in_err: errors.append(in_err)
+
+        # Combine results day by day
+        # Check if last_day was successfully calculated before using it
+        if 'last_day' in locals(): 
+            for day_num in range(1, last_day + 1):
+                results.append({
+                    'day': day_num,
+                    'out_price': outbound_prices.get(day_num), # Will be None if day not found
+                    'in_price': inbound_prices.get(day_num)  # Will be None if day not found
+                })
+            
+    # Flash any errors accumulated
+    for error in errors:
+        flash(error, "error")
+
+    return render_template('price_analysis_results.html',
+                           origin_iata=origin_iata,
+                           destination_iata=destination_iata,
+                           month_str=month_str,
+                           results=results,
+                           currency=currency,
+                           now=datetime.utcnow())
 
 # === Main Execution ===
 if __name__ == '__main__':

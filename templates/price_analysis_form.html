@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Daily Price Analysis - Ryanair Deals{% endblock %}
+
+{% block content %}
+<h1>Daily Price Analysis</h1>
+<p class="lead">See the current cheapest one-way price per day for a selected month.</p>
+
+{# Flashed messages handled in base.html #}
+
+<form action="{{ url_for('price_analysis') }}" method="get" class="needs-validation p-3 border rounded bg-light" novalidate>
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <label for="origin_iata" class="form-label">Origin IATA:</label>
+            <input type="text" class="form-control" id="origin_iata" name="origin_iata" required pattern="[A-Za-z]{3}" title="3-letter IATA code" placeholder="e.g., SOF" value="{{ form_data.get('origin_iata', '') }}">
+             <div class="invalid-feedback">Valid 3-letter Origin IATA required.</div>
+        </div>
+        <div class="col-md-4">
+            <label for="destination_iata" class="form-label">Destination IATA:</label>
+            <input type="text" class="form-control" id="destination_iata" name="destination_iata" required pattern="[A-Za-z]{3}" title="3-letter IATA code" placeholder="e.g., BCN" value="{{ form_data.get('destination_iata', '') }}">
+             <div class="invalid-feedback">Valid 3-letter Destination IATA required.</div>
+        </div>
+        <div class="col-md-4">
+            <label for="month" class="form-label">Month to Analyze:</label>
+            <input type="month" class="form-control" id="month" name="month" required value="{{ form_data.get('month', '') }}">
+             <div class="invalid-feedback">Please select a month.</div>
+       </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Analyze Prices</button>
+</form>
+{% endblock %}
+
+{# Add Bootstrap form validation script #}
+{% block scripts_extra %}
+<script>
+// Example starter JavaScript for disabling form submissions if there are invalid fields
+(() => {
+  'use strict'
+
+  // Fetch all the forms we want to apply custom Bootstrap validation styles to
+  const forms = document.querySelectorAll('.needs-validation')
+
+  // Loop over them and prevent submission
+  Array.from(forms).forEach(form => {
+    form.addEventListener('submit', event => {
+      if (!form.checkValidity()) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+
+      form.classList.add('was-validated')
+    }, false)
+  })
+})()
+</script>
+{% endblock %} 
