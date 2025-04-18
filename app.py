@@ -815,7 +815,9 @@ def collect_price_history():
         {"origin": "SOF", "destination": "BCN"}
         # Add more routes here later if needed
     ]
-    month_to_track_str = "2025-05" # Hardcoded month
+    today = date.today()
+    next_month_date = (today.replace(day=1) + timedelta(days=32))
+    month_to_track_str = next_month_date.strftime('%Y-%m') # Dynamically set to next month
     currency = "EUR"
     # -----------------------------------------
 
