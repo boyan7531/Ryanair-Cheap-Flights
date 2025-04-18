@@ -418,13 +418,16 @@ SOFIA_DESTINATIONS = [
 
 @app.route('/sofia_deals')
 def sofia_deals():
-    # Load current notification settings to populate the form defaults
-    current_notification_settings = load_notification_rules()
+    # Define explicit defaults for the form
+    today = date.today()
+    default_month = (today.replace(day=1) + timedelta(days=32)).strftime('%Y-%m')
+    default_duration_from = "2"
+    default_duration_to = "7"
 
-    # Get parameters from URL (if submitted) or use notification settings as defaults for the form
-    search_month_str = request.args.get('outbound_month', current_notification_settings.get('search_month'))
-    duration_from = request.args.get('duration_from', current_notification_settings.get('duration_from'))
-    duration_to = request.args.get('duration_to', current_notification_settings.get('duration_to'))
+    # Get parameters from URL (if submitted) or use the explicit defaults
+    search_month_str = request.args.get('outbound_month', default_month)
+    duration_from = request.args.get('duration_from', default_duration_from)
+    duration_to = request.args.get('duration_to', default_duration_to)
 
     cheapest_trips_list = []
     errors = []
