@@ -805,6 +805,7 @@ def check_notification_rules(): # Renamed function
 
 def collect_price_history():
     """Scheduled task to collect daily cheapest prices and store in Supabase."""
+    print(f"[{datetime.now()}] Attempting to start collect_price_history task...") # ADDED FOR DEBUGGING
     if not supabase: # Check if Supabase client is initialized
         print(f"[{datetime.now()}] Skipping price history collection: Supabase client not available.")
         return
@@ -908,13 +909,13 @@ logging.getLogger('apscheduler').setLevel(logging.WARNING) # Reduce APScheduler 
 
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(check_notification_rules, 'interval', minutes=2)
-# Add job for history collection (e.g., every hour)
-scheduler.add_job(collect_price_history, 'interval', hours=1, id='price_history_collector') # Added ID
+# Add job for history collection (e.g., every 2 minutes for debugging)
+scheduler.add_job(collect_price_history, 'interval', minutes=2, id='price_history_collector') # Changed from hours=1
 
 try:
     scheduler.start()
     print("Background notification rule checker scheduled to run every 2 minutes.")
-    print("Background price history collector scheduled to run every 1 hour.") # Added message
+    print("Background price history collector scheduled to run every 2 minutes.") # Updated message
     # Shut down the scheduler when exiting the app
     atexit.register(lambda: scheduler.shutdown())
 except (KeyboardInterrupt, SystemExit):
