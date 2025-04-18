@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Price Trends - Ryanair Deals{% endblock %}
+
+{% block head_extra %}
+    {# Chart.js CDN #}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    {# Moment.js and Chart.js Adapter for Time Scale #}
+    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1>Historical Price Trends</h1>
+<p class="lead">See how the cheapest price for a specific flight changed over time.</p>
+
+{# Flashed messages handled in base.html #}
+
+<form id="trend-form" class="needs-validation p-3 border rounded bg-light mb-4" novalidate>
+    <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+            <label for="origin_iata" class="form-label">Origin IATA:</label>
+            <input type="text" class="form-control" id="origin_iata" name="origin_iata" required pattern="[A-Za-z]{3}" title="3-letter IATA code" placeholder="e.g., SOF" value="{{ form_data.get('origin_iata', '') }}">
+             <div class="invalid-feedback">Valid 3-letter Origin IATA required.</div>
+        </div>
+        <div class="col-md-3">
+            <label for="destination_iata" class="form-label">Destination IATA:</label>
+            <input type="text" class="form-control" id="destination_iata" name="destination_iata" required pattern="[A-Za-z]{3}" title="3-letter IATA code" placeholder="e.g., BCN" value="{{ form_data.get('destination_iata', '') }}">
+             <div class="invalid-feedback">Valid 3-letter Destination IATA required.</div>
+        </div>
+        <div class="col-md-3">
+            <label for="departure_date" class="form-label">Departure Date:</label>
+            <input type="date" class="form-control" id="departure_date" name="departure_date" required value="{{ form_data.get('departure_date', '') }}">
+             <div class="invalid-feedback">Please select a departure date.</div>
+       </div>
+        <div class="col-md-1">
+            <label for="direction" class="form-label">Dir:</label>
+            <select class="form-select" id="direction" name="direction">
+                <option value="outbound" {% if form_data.get('direction') == 'outbound' %}selected{% endif %}>Out</option>
+                <option value="inbound" {% if form_data.get('direction') == 'inbound' %}selected{% endif %}>In</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">Show Trend</button>
+        </div>
+    </div>
+</form>
+
+{# Chart Area #}
+<div id="chart-container" style="display: none;">
+    <h3 id="chart-title">Price Trend</h3>
+    <canvas id="price-trend-chart"></canvas>
+    <div id="chart-message" class="alert alert-info mt-3" style="display: none;"></div>
+</div>
+<div id="loading-indicator" class="text-center mt-4" style="display: none;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+<div id="error-message" class="alert alert-danger mt-4" style="display: none;"></div>
+
+{% endblock %}
+
+{# Add Bootstrap form validation script and Chart rendering JS #}
+{% block scripts_extra %}
+<script>
+    // Form validation
+    (() => {
+      'use strict'
+      const forms = document.querySelectorAll('.needs-validation')
+      Array.from(forms).forEach(form => {
+        form.addEventListener('submit', event => {
+          if (!form.checkValidity()) {
+            event.preventDefault()
+            event.stopPropagation()
+          }
+          form.classList.add('was-validated')
+        }, false)
+      })
+    })()
+
+    // Chart JS Logic
+    const form = document.getElementById('trend-form');
+    const chartContainer = document.getElementById('chart-container');
+    const chartTitle = document.getElementById('chart-title');
+    const chartCanvas = document.getElementById('price-trend-chart');
+    const chartMessage = document.getElementById('chart-message');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const errorMessageDiv = document.getElementById('error-message');
+    let priceChart = null; // Variable to hold the chart instance
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!form.checkValidity()) {
+            form.classList.add('was-validated');
+            return;
+        }
+        form.classList.add('was-validated');
+
+        // Clear previous results/errors
+        errorMessageDiv.style.display = 'none';
+        chartMessage.style.display = 'none';
+        chartContainer.style.display = 'none';
+        if (priceChart) {
+            priceChart.destroy();
+            priceChart = null;
+        }
+        loadingIndicator.style.display = 'block';
+
+        const origin = document.getElementById('origin_iata').value;
+        const destination = document.getElementById('destination_iata').value;
+        const departureDate = document.getElementById('departure_date').value;
+        const direction = document.getElementById('direction').value;
+
+        const apiUrl = `{{ url_for('api_price_history') }}?origin_iata=${origin}&destination_iata=${destination}&departure_date=${departureDate}&direction=${direction}`;
+
+        try {
+            const response = await fetch(apiUrl);
+            loadingIndicator.style.display = 'none';
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            chartTitle.textContent = `Price Trend: ${direction === 'outbound' ? origin : destination} → ${direction === 'outbound' ? destination : origin} on ${departureDate}`;
+
+            if (data.labels && data.labels.length > 0) {
+                chartContainer.style.display = 'block';
+                chartMessage.style.display = 'none';
+                
+                const ctx = chartCanvas.getContext('2d');
+                priceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: 'Price (€)', // Assuming EUR
+                            data: data.prices,
+                            fill: false,
+                            borderColor: 'rgb(75, 192, 192)',
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    tooltipFormat: 'YYYY-MM-DD HH:mm',
+                                    displayFormats: {
+                                        hour: 'MMM D HH:mm'
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Date Collected'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Price (€)'
+                                },
+                                beginAtZero: false // Start axis near lowest price
+                            }
+                        },
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            } else {
+                // No data found, show message
+                chartContainer.style.display = 'none';
+                chartMessage.textContent = data.message || 'No historical data found for these criteria.';
+                chartMessage.style.display = 'block';
+            }
+
+        } catch (error) {
+            console.error('Error fetching or rendering chart:', error);
+            loadingIndicator.style.display = 'none';
+            errorMessageDiv.textContent = `Error: ${error.message || 'Could not fetch price trends.'}`;
+            errorMessageDiv.style.display = 'block';
+        }
+    });
+</script>
+{% endblock %} 

@@ -1019,6 +1019,89 @@ def price_analysis():
                            currency=currency,
                            now=datetime.utcnow())
 
+# === API Route for Historical Price Data ===
+
+@app.route('/api/price_history')
+def api_price_history():
+    if not supabase:
+        return jsonify({"error": "Supabase client not available"}), 503
+
+    # Get query parameters
+    origin_iata = request.args.get('origin_iata', '').strip().upper()
+    destination_iata = request.args.get('destination_iata', '').strip().upper()
+    departure_date_str = request.args.get('departure_date', '') # Expect YYYY-MM-DD
+    direction = request.args.get('direction', 'outbound').lower() # 'outbound' or 'inbound'
+
+    # --- Basic Validation --- #
+    errors = []
+    iata_pattern = re.compile(r"^[A-Za-z]{3}$")
+    if not origin_iata or not iata_pattern.match(origin_iata):
+        errors.append("Missing or invalid origin_iata parameter.")
+    if not destination_iata or not iata_pattern.match(destination_iata):
+        errors.append("Missing or invalid destination_iata parameter.")
+    if direction not in ['outbound', 'inbound']:
+        errors.append("Invalid direction parameter. Use 'outbound' or 'inbound'.")
+    
+    try:
+        departure_date_obj = datetime.strptime(departure_date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        errors.append("Missing or invalid departure_date parameter (YYYY-MM-DD).")
+
+    if errors:
+        return jsonify({"error": "Invalid parameters", "details": errors}), 400
+    # --- End Validation --- #
+
+    # Determine actual origin/destination based on direction for the query
+    query_origin = origin_iata if direction == 'outbound' else destination_iata
+    query_destination = destination_iata if direction == 'outbound' else origin_iata
+
+    print(f"API Req: History for {query_origin}->{query_destination} on {departure_date_str}")
+
+    # --- Query Supabase --- #
+    try:
+        query = supabase.table('price_history')\
+            .select('collected_at, price')\
+            .eq('origin_iata', query_origin)\
+            .eq('destination_iata', query_destination)\
+            .eq('departure_date', departure_date_str)\
+            .order('collected_at', desc=False)
+            # .limit(1000) # Optional: Limit results if needed
+        
+        results = query.execute()
+
+        # Supabase Python client v2 returns an APIResponse object
+        # Access data via response.data
+        data = results.data
+        
+        if data:
+             # Prepare data for Chart.js (labels = timestamps, data = prices)
+             labels = [item['collected_at'] for item in data]
+             prices = [item['price'] for item in data]
+             return jsonify({"labels": labels, "prices": prices})
+        else:
+             return jsonify({"labels": [], "prices": [], "message": "No historical data found for these criteria."}), 200
+
+    except Exception as e:
+        print(f"Error querying Supabase for price history: {e}")
+        return jsonify({"error": "Database query failed"}), 500
+
+# === Route for Price Trend Visualization ===
+
+@app.route('/price_trends')
+def price_trends():
+    # Just render the form template. Data loading and chart rendering happens via JavaScript.
+    today = date.today()
+    default_date = (today + timedelta(days=30)).strftime('%Y-%m-%d') # Default to 30 days from now
+    # Get form values from query args if user navigates back/refreshes?
+    # Might be simpler to just use defaults or let JS handle it.
+    form_data = {
+        'origin_iata': request.args.get('origin_iata', 'SOF'),
+        'destination_iata': request.args.get('destination_iata', 'BCN'),
+        'departure_date': request.args.get('departure_date', default_date),
+        'direction': request.args.get('direction', 'outbound')
+    }
+    return render_template('price_trends.html', form_data=form_data, now=datetime.utcnow())
+
 # === Main Execution ===
 if __name__ == '__main__':
     # Note: Flask's default reloader might interfere with APScheduler.

@@ -32,7 +32,10 @@
                         <a class="nav-link {% if request.endpoint == 'sofia_deals' %}active{% endif %}" href="{{ url_for('sofia_deals') }}">Sofia Deals</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'price_analysis' %}active{% endif %}" href="{{ url_for('price_analysis') }}">Price Analysis</a>
+                        <a class="nav-link {{ 'active' if request.path == url_for('price_trends') }}" href="{{ url_for('price_trends') }}">Price Trends</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.path == url_for('price_analysis') }}" href="{{ url_for('price_analysis') }}">Price Analysis</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'configure_notifications' %}active{% endif %}" href="{{ url_for('configure_notifications') }}">Notification Settings</a>
